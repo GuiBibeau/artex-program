@@ -15,7 +15,14 @@ func TestPromptSeedsCarryFindingQualityGates(t *testing.T) {
 				"attacker's goal achieved end to end",
 				"a number with its denominator",
 				"State the proof basis",
-				"at most three non-owned objects",
+				"at most three non-owned accounts",
+				// The money rules: cluster choice, the approval gate on live
+				// transactions, mainnet, and the operator-funded wallet flow.
+				"never mainnet-beta",
+				"the platform's approval gate has let it through",
+				"Never change mainnet-beta state",
+				"never print or paste the secret key",
+				"ask_operator with the exact funding command",
 			} {
 				if !strings.Contains(tmpl, marker) {
 					t.Errorf("%s seed missing quality-gate marker %q", name, marker)

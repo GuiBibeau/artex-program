@@ -595,12 +595,16 @@ ORDER BY b.position, b.id`, findingID)
 
 	var assetHosts []string
 	var assetRootDomains []string
+	solana := false
 	if len(assetIDs) > 0 {
 		assets, err := s.db.Assets().GetByIDs(assetIDs)
 		if err != nil {
 			return nil, fmt.Errorf("load finding assets: %w", err)
 		}
 		for _, a := range assets {
+			if a.Chain == ChainSolana {
+				solana = true
+			}
 			addHost := func(h string) {
 				h = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(h), "."))
 				if h != "" {
@@ -622,15 +626,35 @@ ORDER BY b.position, b.id`, findingID)
 			}
 		}
 	}
-	if len(assetHosts) == 0 && len(assetRootDomains) == 0 {
+	// A Solana program asset has no host of its own: the program is reached
+	// through the RPC endpoint of its cluster. The task's cluster scope rows name
+	// that endpoint, so its host is what a bound JSON-RPC exchange must match.
+	var assetRPCHosts []string
+	if solana {
+		hosts, err := s.taskClusterRPCHosts(ctx, nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("load the task's cluster RPC hosts: %w", err)
+		}
+		assetRPCHosts = hosts
+	}
+	if len(assetHosts) == 0 && len(assetRootDomains) == 0 && len(assetRPCHosts) == 0 {
+		reason := "finding's linked assets have no host to match its bound traffic against"
+		if solana {
+			reason = "finding's Solana assets have no RPC endpoint to match its bound traffic against: add the cluster to the task scope (add_task_scope, kind=cluster)"
+		}
 		return &FindingProofCheck{
 			Proven:    false,
 			FindingID: findingID,
-			Reason:    "finding's linked assets have no host to match its bound traffic against",
+			Reason:    reason,
 		}, nil
 	}
 
 	hostMatchesFinding := func(snapHost string) bool {
+		for _, h := range assetRPCHosts {
+			if snapHost == h {
+				return true
+			}
+		}
 		for _, h := range assetHosts {
 			if snapHost == h {
 				return true

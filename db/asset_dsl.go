@@ -43,6 +43,11 @@ var knownStringFields = map[string]string{
 	"method":       "method",
 	"service_type": "service_type",
 	"record_type":  "record_type",
+	"address":      "address",
+	"parent":       "parent",
+	"program_id":   "parent",
+	"name":         "name",
+	"chain":        "chain",
 }
 
 // knownArrayFields maps DSL field name → SQL column name (array).
@@ -269,6 +274,7 @@ func ParseDSL(s string) (*astNode, error) {
 var fullTextCols = []string{
 	"domain", "root_domain", "ip", "url", "page_title",
 	"icp", "service_name", "app_name", "app_description",
+	"address", "parent", "name",
 }
 
 type whereBuilder struct {

@@ -116,6 +116,17 @@ func ParseScopeInput(input ScopeInput) (ParsedScope, error) {
 			return ParsedScope{Kind: kind, Raw: raw}, fmt.Errorf("company keyword must not be empty")
 		}
 		return ParsedScope{Kind: kind, Value: value, Raw: raw}, nil
+	case ScopeKindProgram:
+		if err := ValidateSolanaAddress(raw); err != nil {
+			return ParsedScope{Kind: kind, Raw: raw}, err
+		}
+		return ParsedScope{Kind: kind, Value: strings.TrimSpace(raw), Raw: raw}, nil
+	case ScopeKindCluster:
+		value, err := NormalizeSolanaCluster(raw)
+		if err != nil {
+			return ParsedScope{Kind: kind, Raw: raw}, err
+		}
+		return ParsedScope{Kind: kind, Value: value, Raw: raw}, nil
 	default:
 		return ParsedScope{Kind: kind, Raw: raw}, fmt.Errorf("unsupported scope kind: %s", kind)
 	}
@@ -135,6 +146,14 @@ func ParseAutoScopeLine(line string) (ParsedScope, error) {
 	}
 	if ip := net.ParseIP(raw); ip != nil {
 		return ParseScopeLine(raw)
+	}
+	// A Solana program id (a base58 32-byte key) has no dot and no scheme; it
+	// must not fall through to the keyword rule.
+	if IsSolanaAddress(raw) {
+		return ParseScopeInput(ScopeInput{Kind: ScopeKindProgram, Value: raw})
+	}
+	if _, err := NormalizeSolanaCluster(raw); err == nil && !strings.ContainsAny(raw, ":/") {
+		return ParseScopeInput(ScopeInput{Kind: ScopeKindCluster, Value: raw})
 	}
 	if slash := strings.LastIndexByte(raw, '/'); slash > 0 {
 		address := strings.TrimSpace(raw[:slash])

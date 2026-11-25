@@ -225,6 +225,29 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 		case "icp", "keyword":
 			taskScope.Kind = rule.Kind
 			taskScope.Value = rule.Value
+		case ScopeKindProgram:
+			// The program is the root asset of the engagement; registering its
+			// scope registers the asset, as a root domain does.
+			taskScope.Kind = ScopeKindProgram
+			taskScope.Value = rule.Value
+			var alreadyLinked bool
+			err := tx.QueryRow(`SELECT id, $2=ANY(task_ids) FROM assets WHERE chain=$3 AND type='program' AND address=$1`,
+				rule.Value, taskID, ChainSolana).Scan(&assetID, &alreadyLinked)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return mutation, err
+			}
+			assetID, err = scoped.UpsertSolanaAsset(SolanaAssetReq{Type: SolanaProgram, Address: rule.Value, TaskID: taskID})
+			if err != nil {
+				return mutation, err
+			}
+			if alreadyLinked {
+				mutation.AssetsExisting++
+			} else {
+				mutation.AssetsLinked++
+			}
+		case ScopeKindCluster:
+			taskScope.Kind = ScopeKindCluster
+			taskScope.Value = rule.Value
 		default:
 			return mutation, fmt.Errorf("%w: unsupported scope kind %q", ErrTaskAssetInvalid, rule.Kind)
 		}

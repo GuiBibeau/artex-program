@@ -41,7 +41,8 @@ CREATE TRIGGER trg_companies_upd BEFORE UPDATE ON companies
 CREATE TABLE IF NOT EXISTS assets (
     id              BIGSERIAL PRIMARY KEY,
     type            TEXT NOT NULL CHECK (type IN (
-                        'root_domain','ip','subdomain','app','service','endpoint'
+                        'root_domain','ip','subdomain','app','service','endpoint',
+                        'program','instruction','account','authority','mint','token_account'
                     )),
     company_id      BIGINT REFERENCES companies(id) ON DELETE SET NULL,
     -- explicit: caller/user selected the company; scope: derived from company_scope.
@@ -77,6 +78,14 @@ CREATE TABLE IF NOT EXISTS assets (
     method          TEXT,
     params          JSONB[] NOT NULL DEFAULT '{}',
     extra           JSONB   NOT NULL DEFAULT '{}',
+    -- Solana program assets. chain names the ledger ('solana'); address is the
+    -- on-chain key (program id, account, PDA, authority, mint, token account);
+    -- parent is the program id an asset belongs to; name is the instruction
+    -- name (type=instruction) or a display label.
+    chain           TEXT,
+    address         TEXT,
+    parent          TEXT,
+    name            TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -109,6 +118,23 @@ ALTER TABLE assets ALTER COLUMN company_source SET NOT NULL;
 ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_company_source_check;
 ALTER TABLE assets ADD CONSTRAINT assets_company_source_check
     CHECK (company_source IN ('explicit','scope'));
+-- Solana program assets on an existing database: the new columns, then the type
+-- list widened in place (the inline CHECK of CREATE TABLE is named
+-- assets_type_check by PostgreSQL).
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS chain   TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS parent  TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS name    TEXT;
+ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_type_check;
+ALTER TABLE assets ADD CONSTRAINT assets_type_check
+    CHECK (type IN ('root_domain','ip','subdomain','app','service','endpoint',
+                    'program','instruction','account','authority','mint','token_account'));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sol_address
+    ON assets(type, address) WHERE chain = 'solana' AND type IN ('program','account','authority','mint','token_account');
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sol_instruction
+    ON assets(parent, name)  WHERE chain = 'solana' AND type = 'instruction';
+CREATE INDEX IF NOT EXISTS idx_av2_chain_address ON assets(chain, address) WHERE address IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_av2_parent       ON assets(parent)       WHERE parent IS NOT NULL;
 DROP TRIGGER IF EXISTS trg_av2_upd ON assets;
 CREATE TRIGGER trg_av2_upd BEFORE UPDATE ON assets
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -766,7 +792,7 @@ WHERE t.active_llm_profile_id IS NULL
 CREATE TABLE IF NOT EXISTS task_scope (
     id          BIGSERIAL PRIMARY KEY,
     task_id     BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    kind        TEXT NOT NULL CHECK (kind IN ('company','root_domain','subdomain','ip','cidr','icp','keyword')),
+    kind        TEXT NOT NULL CHECK (kind IN ('company','root_domain','subdomain','ip','cidr','icp','keyword','program','cluster')),
     company_id  BIGINT REFERENCES companies(id) ON DELETE CASCADE,  -- kind='company'
     domain      TEXT,          -- root_domain / subdomain
     net         CIDR,          -- ip / cidr
@@ -781,7 +807,7 @@ ALTER TABLE task_scope ADD COLUMN IF NOT EXISTS expanded BOOLEAN NOT NULL DEFAUL
 ALTER TABLE task_scope ADD COLUMN IF NOT EXISTS value TEXT;
 ALTER TABLE task_scope DROP CONSTRAINT IF EXISTS task_scope_kind_check;
 ALTER TABLE task_scope ADD CONSTRAINT task_scope_kind_check
-    CHECK (kind IN ('company','root_domain','subdomain','ip','cidr','icp','keyword'));
+    CHECK (kind IN ('company','root_domain','subdomain','ip','cidr','icp','keyword','program','cluster'));
 -- Dedup: the same scope entry is stored only once per task (auto-fill bulk inserts rely on it for idempotence).
 DROP INDEX IF EXISTS uq_task_scope;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_task_scope_v2 ON task_scope(

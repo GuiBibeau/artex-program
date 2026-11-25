@@ -20,7 +20,7 @@ import (
 type TaskScope struct {
 	ID        int64  `json:"id"`
 	TaskID    int64  `json:"task_id"`
-	Kind      string `json:"kind"` // company|root_domain|subdomain|ip|cidr|icp|keyword
+	Kind      string `json:"kind"` // company|root_domain|subdomain|ip|cidr|icp|keyword|program|cluster
 	CompanyID *int64 `json:"company_id,omitempty"`
 	// CompanyName is resolved for kind=company so callers can label a scope row
 	// without a second lookup. Empty when the row is not a company reference.
@@ -151,6 +151,8 @@ func (s *AssetStore) AddAutoScope(taskID int64, assetType, domain, rawURL, ip st
 // source is "agent" when called from an LLM tool, "manual" from the UI.
 // company: value = company name or id (must already exist). root_domain/subdomain:
 // value = a domain. ip/cidr: value = an IP or CIDR (bare IP → /32,/128).
+// program: value = a base58 program id. cluster: value = devnet, testnet,
+// mainnet-beta, localnet or an http(s) RPC URL.
 func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source string) (TaskScope, error) {
 	if source == "" {
 		source = "agent"
@@ -213,14 +215,14 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 			return ts, fmt.Errorf("invalid ip/cidr: %s", value)
 		}
 		ts.Net = v
-	case "icp", "keyword":
+	case "icp", "keyword", ScopeKindProgram, ScopeKindCluster:
 		parsed, err := ParseScopeInput(ScopeInput{Kind: kind, Value: value})
 		if err != nil {
 			return ts, err
 		}
 		ts.Value = parsed.Value
 	default:
-		return ts, fmt.Errorf("unsupported kind: %s (company/root_domain/subdomain/ip/cidr/icp/keyword)", kind)
+		return ts, fmt.Errorf("unsupported kind: %s (company/root_domain/subdomain/ip/cidr/icp/keyword/program/cluster)", kind)
 	}
 	if source == "agent" {
 		expanded, err := s.isScopeExpansion(taskID, ts)
@@ -304,7 +306,7 @@ func scopeRowCovers(existing, cand TaskScope) bool {
 		return eBits == cBits && eOnes <= cOnes && eNet.Contains(cIP)
 	case "company":
 		return existing.Kind == "company" && existing.CompanyID != nil && cand.CompanyID != nil && *existing.CompanyID == *cand.CompanyID
-	case "icp", "keyword":
+	case "icp", "keyword", ScopeKindProgram, ScopeKindCluster:
 		return existing.Kind == cand.Kind && strings.EqualFold(existing.Value, cand.Value)
 	}
 	return false
@@ -411,6 +413,7 @@ const declaredScopeFilter = `(ts.source <> 'auto' OR EXISTS (
          (d.kind IN ('root_domain','subdomain') AND ts.domain IS NOT NULL
           AND (ts.domain = d.domain OR right(ts.domain, length(d.domain)+1) = '.' || d.domain))
       OR (d.kind IN ('ip','cidr') AND ts.net IS NOT NULL AND ts.net <<= d.net)
+      OR (d.kind = 'program' AND ts.kind = 'program' AND ts.value = d.value)
     )
   ))`
 
@@ -418,13 +421,14 @@ const declaredScopeFilter = `(ts.source <> 'auto' OR EXISTS (
 const covTargetCTE = `
 target AS (
   SELECT DISTINCT a.id, a.type,
-         COALESCE(a.url, a.domain, a.ip, a.app_name, a.root_domain, '') AS label
+         COALESCE(a.url, a.domain, a.ip, a.app_name, a.root_domain, a.name, a.address, '') AS label
   FROM assets a
   JOIN task_scope ts ON ts.task_id = $1 AND (
        (ts.kind='company'     AND a.company_id = ts.company_id)
     OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
     OR (ts.kind='subdomain'   AND a.domain = ts.domain)
     OR (ts.kind IN ('ip','cidr') AND ts.net >>= try_inet(a.ip))
+    OR ` + solanaScopePredicate + `
     OR (ts.kind='icp' AND (
          lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
          OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
@@ -480,13 +484,18 @@ FROM target t GROUP BY t.type ORDER BY t.type`, taskID, expID)
 // connector nodes (roots pulled in only to link subdomains, and the companies
 // above them) carry InScope=false and are rendered gray.
 type CoverageGraphNode struct {
-	Key         string `json:"key"`
-	Kind        string `json:"kind"` // company|root_domain|subdomain|ip|service|app|endpoint
-	Label       string `json:"label"`
-	Tested      bool   `json:"tested"`
-	InScope     bool   `json:"in_scope"`
-	AssetID     int64  `json:"asset_id,omitempty"` // 0 for company / synthetic root
-	CompanyID   int64  `json:"company_id,omitempty"`
+	Key       string `json:"key"`
+	Kind      string `json:"kind"` // company|root_domain|subdomain|ip|service|app|endpoint|program|instruction|account|authority|mint|token_account
+	Label     string `json:"label"`
+	Tested    bool   `json:"tested"`
+	InScope   bool   `json:"in_scope"`
+	AssetID   int64  `json:"asset_id,omitempty"` // 0 for company / synthetic root
+	CompanyID int64  `json:"company_id,omitempty"`
+	// Solana program assets: the on-chain key and the program id they hang off.
+	Chain       string `json:"chain,omitempty"`
+	Address     string `json:"address,omitempty"`
+	Parent      string `json:"parent,omitempty"`
+	Name        string `json:"name,omitempty"`
 	Domain      string `json:"domain,omitempty"`
 	RootDomain  string `json:"root_domain,omitempty"`
 	IP          string `json:"ip,omitempty"`
@@ -545,6 +554,7 @@ SELECT a.id, a.type, COALESCE(a.company_id,0),
        COALESCE(a.domain,''), COALESCE(a.root_domain,''), COALESCE(a.ip,''),
        COALESCE(a.url,''), COALESCE(a.port,0), COALESCE(a.service_type,''),
        COALESCE(a.app_name,''), COALESCE(a.page_title,''), COALESCE(a.status_code,0),
+       COALESCE(a.chain,''), COALESCE(a.address,''), COALESCE(a.parent,''), COALESCE(a.name,''),
        (a.id IN (SELECT asset_id FROM tested)) AS tested
 FROM assets a JOIN target t ON t.id = a.id
 ORDER BY a.id`, taskID)
@@ -559,7 +569,8 @@ ORDER BY a.id`, taskID)
 	ipByAddr := map[string]string{}     // ip literal   → node key
 	svcByHostPort := map[string]string{}
 	svcByHost := map[string]string{}
-	companyIDs := map[int64]bool{} // referenced company ids (need a node)
+	companyIDs := map[int64]bool{}          // referenced company ids (need a node)
+	programByAddress := map[string]string{} // program id → node key
 
 	add := func(n CoverageGraphNode) *CoverageGraphNode {
 		if _, ok := byKey[n.Key]; ok {
@@ -576,7 +587,8 @@ ORDER BY a.id`, taskID)
 		var companyID int64
 		if err := rows.Scan(&n.AssetID, &n.Kind, &companyID,
 			&n.Domain, &n.RootDomain, &n.IP, &n.URL, &n.Port, &n.ServiceType,
-			&n.AppName, &n.PageTitle, &n.StatusCode, &n.Tested); err != nil {
+			&n.AppName, &n.PageTitle, &n.StatusCode,
+			&n.Chain, &n.Address, &n.Parent, &n.Name, &n.Tested); err != nil {
 			return nil, err
 		}
 		n.Key = assetKey(n.AssetID)
@@ -596,6 +608,10 @@ ORDER BY a.id`, taskID)
 		case "ip":
 			if n.IP != "" {
 				ipByAddr[n.IP] = p.Key
+			}
+		case SolanaProgram:
+			if n.Address != "" {
+				programByAddress[n.Address] = p.Key
 			}
 		case "service":
 			host, port := hostPortOf(p)
@@ -669,6 +685,65 @@ WHERE type='root_domain' AND domain=ANY($1::text[]) ORDER BY id`, roots)
 		rootByDomain[root] = node.Key
 	}
 
+	// Connector programs: a Solana asset whose parent program is not itself an
+	// in-scope node (a dependency or an auto-created row). Pull the real asset
+	// row if one exists, else synthesize a bare "p:<program id>" placeholder.
+	missingPrograms := map[string]bool{}
+	for _, n := range g.Nodes {
+		if n.Chain == ChainSolana && n.Parent != "" && n.Kind != SolanaProgram {
+			if _, ok := programByAddress[n.Parent]; !ok {
+				missingPrograms[n.Parent] = true
+			}
+		}
+	}
+	programs := make([]string, 0, len(missingPrograms))
+	for addr := range missingPrograms {
+		programs = append(programs, addr)
+	}
+	sort.Strings(programs)
+	type programRow struct {
+		id, companyID int64
+		name          string
+	}
+	programRows := map[string]programRow{}
+	if len(programs) > 0 {
+		prows, err := s.db.Query(`SELECT address, id, COALESCE(company_id,0), COALESCE(name,'') FROM assets
+WHERE chain=$1 AND type='program' AND address=ANY($2::text[]) ORDER BY id`, ChainSolana, programs)
+		if err != nil {
+			return nil, err
+		}
+		for prows.Next() {
+			var addr string
+			var r programRow
+			if err := prows.Scan(&addr, &r.id, &r.companyID, &r.name); err != nil {
+				prows.Close()
+				return nil, err
+			}
+			if _, ok := programRows[addr]; !ok {
+				programRows[addr] = r
+			}
+		}
+		err = prows.Err()
+		prows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, addr := range programs {
+		node := CoverageGraphNode{Key: "p:" + addr, Kind: SolanaProgram, Chain: ChainSolana,
+			Address: addr, Label: addr}
+		if r, ok := programRows[addr]; ok && r.id > 0 {
+			node = CoverageGraphNode{Key: assetKey(r.id), Kind: SolanaProgram, AssetID: r.id,
+				CompanyID: r.companyID, Chain: ChainSolana, Address: addr, Name: r.name,
+				Label: coverageNodeLabel(&node)}
+			if r.companyID > 0 {
+				companyIDs[r.companyID] = true
+			}
+		}
+		add(node)
+		programByAddress[addr] = node.Key
+	}
+
 	// Company nodes for every referenced company id — always gray context. One
 	// query for all of them; an id with no company row gets no node.
 	ids := make([]int64, 0, len(companyIDs))
@@ -730,6 +805,12 @@ WHERE type='root_domain' AND domain=ANY($1::text[]) ORDER BY id`, roots)
 			}
 		case "service":
 			link(n.Key, firstOf(subByDomain[n.Domain], ipByAddr[n.IP], rootByDomain[n.RootDomain]))
+		case SolanaProgram:
+			if n.CompanyID > 0 {
+				link(n.Key, companyKey(n.CompanyID))
+			}
+		case SolanaInstruction, SolanaAccount, SolanaAuthority, SolanaMint, SolanaTokenAccount:
+			link(n.Key, programByAddress[n.Parent])
 		case "endpoint":
 			host, port := hostPortOf(n)
 			parent := firstOf(
@@ -748,6 +829,17 @@ func coverageNodeLabel(n *CoverageGraphNode) string {
 	case "endpoint", "service":
 		if n.URL != "" {
 			return n.URL
+		}
+	case SolanaInstruction:
+		if n.Name != "" {
+			return n.Name
+		}
+		if n.Parent != "" {
+			return n.Parent + "::?"
+		}
+	case SolanaProgram, SolanaAccount, SolanaAuthority, SolanaMint, SolanaTokenAccount:
+		if n.Address != "" {
+			return n.Address
 		}
 	case "app":
 		if n.AppName != "" {

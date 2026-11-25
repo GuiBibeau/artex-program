@@ -59,6 +59,10 @@ func assetInputLabel(item assetInputItem) string {
 		target = strings.TrimSpace(item.IP)
 	case strings.TrimSpace(item.ServiceIP) != "":
 		target = strings.TrimSpace(item.ServiceIP)
+	case strings.TrimSpace(item.Address) != "":
+		target = strings.TrimSpace(item.Address)
+	case strings.TrimSpace(item.Name) != "":
+		target = strings.TrimSpace(item.Name)
 	default:
 		target = "(unknown)"
 	}
@@ -81,7 +85,7 @@ func (t *ToolSet) SetAssetStore(as *db.AssetStore, cs *db.CompanyStore) {
 
 // assetInputItem is one element of the insert_assets "assets" array.
 type assetInputItem struct {
-	Type string `json:"type"` // root_domain|ip|subdomain|app|service|endpoint
+	Type string `json:"type"` // root_domain|ip|subdomain|app|service|endpoint|program|instruction|account|authority|mint|token_account
 
 	// ---- root_domain / subdomain ----
 	Domain      string   `json:"domain"`
@@ -120,6 +124,12 @@ type assetInputItem struct {
 	// ---- endpoint ----
 	Method string           `json:"method"`
 	Params []map[string]any `json:"params"`
+
+	// ---- Solana program assets (program / instruction / account / authority / mint / token_account) ----
+	Address   string         `json:"address"`    // the on-chain key (every type but instruction)
+	ProgramID string         `json:"program_id"` // the program the asset belongs to (every type but program)
+	Name      string         `json:"name"`       // the instruction name; a display label otherwise
+	Props     map[string]any `json:"props"`      // type-specific attributes
 }
 
 // insertAssetsRuleLoadFailure refuses the whole insert_assets call when
@@ -138,8 +148,9 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 	return writeTool(
 		"insert_assets",
 		"Register newly discovered assets in bulk; multiple types can be mixed in one call (see the type enum).\n"+
-			"Required fields per type: root_domain→domain; ip→ip (must be IPv4/IPv6, not a hostname); subdomain→domain; app→app_name; service(HTTP)→url; service(non-HTTP)→service_name+port (at least one of ip/domain); endpoint→url+method. See each field's own description for the rest.\n"+
-			"auth/technologies/params are append-merged, not overwritten.\n"+
+			"Required fields per type: program→address (the program id); instruction→program_id+name; account/authority/mint/token_account→address+program_id; root_domain→domain; ip→ip (must be IPv4/IPv6, not a hostname); subdomain→domain; app→app_name; service(HTTP)→url; service(non-HTTP)→service_name+port (at least one of ip/domain); endpoint→url+method. See each field's own description for the rest.\n"+
+			"Solana assets take structured attributes in props (see its description); a program that is not registered yet is created as a bare row when a child names it in program_id.\n"+
+			"auth/technologies/params are append-merged, not overwritten; props arrays are united with the stored ones.\n"+
 			"Returns: {results:[{index,id,type}], errors:[{index,error}]}",
 		obj(map[string]any{
 			// task_id is not exposed to the model: which task a worker belongs to is
@@ -150,7 +161,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 				"items": obj(map[string]any{
 					"type": map[string]any{
 						"type":        "string",
-						"enum":        []string{"root_domain", "ip", "subdomain", "app", "service", "endpoint"},
+						"enum":        []string{"root_domain", "ip", "subdomain", "app", "service", "endpoint", "program", "instruction", "account", "authority", "mint", "token_account"},
 						"description": "asset type",
 					},
 					// root_domain / subdomain
@@ -212,6 +223,15 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 						"type":        "array",
 						"description": "list of request parameters, each with location(query/body/header/path)/name/value/type (optional, appended not overwritten)",
 						"items":       map[string]any{"type": "object"},
+					},
+					// Solana program assets
+					"address":    str("base58 on-chain key of 32 bytes: the program id (type=program), or the account / authority / mint / token-account address (required for those types)"),
+					"program_id": str("program id the asset belongs to (required for every type but program). A program that is not registered yet is created as a bare row"),
+					"name":       str("the on-chain instruction name, e.g. withdraw (required for instruction); a short display label for the other Solana types (optional)"),
+					"props": map[string]any{
+						"type":                 "object",
+						"description":          "structured attributes of a Solana asset, merged into the asset on re-registration (arrays are united). program: cluster, upgradeable, upgrade_authority, last_deploy_slot, source_repo, idl; instruction: discriminator, args, accounts[{name,writable,signer,pda,seeds}], docs; account: owner, lamports, space, data_sha256, pda, seeds, bump, parsed; authority: role (upgrade_authority|admin|mint_authority|freeze_authority|vault_authority|...), controls[{asset,role}]; mint: decimals, supply, mint_authority, freeze_authority, token_program, extensions; token_account: mint, owner, amount, delegate",
+						"additionalProperties": true,
 					},
 				}, "type"),
 			},
@@ -352,6 +372,17 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 						TaskID: taskID,
 					})
 
+				case db.SolanaProgram, db.SolanaInstruction, db.SolanaAccount, db.SolanaAuthority, db.SolanaMint, db.SolanaTokenAccount:
+					id, err = t.as.UpsertSolanaAsset(db.SolanaAssetReq{
+						Type:      typ,
+						Address:   item.Address,
+						Parent:    item.ProgramID,
+						Name:      item.Name,
+						Props:     item.Props,
+						CompanyID: item.CompanyID,
+						TaskID:    taskID,
+					})
+
 				default:
 					errs = append(errs, errEntry{Index: i, Error: "unknown type: " + typ})
 					continue
@@ -395,6 +426,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 						svcIP = item.IP
 					}
 					_ = t.as.AddAutoScope(taskID, typ, item.Domain, item.URL, svcIP)
+					_ = t.as.AddAutoSolanaScope(taskID, typ, item.Address)
 				}
 			}
 
@@ -469,14 +501,14 @@ func (t *ToolSet) addTaskScope() actool.CoreTool {
 	return writeTool(
 		"add_task_scope",
 		"Add test scope to [this task] — "+taskScopeLabel+": it is the denominator of asset test coverage; nothing blocks a tool call outside it.\n"+
-			"Supported kinds: company (all assets under the company) / root_domain (a whole root domain, including all subdomains) / subdomain (a single precise subdomain) / ip / cidr / icp / keyword.\n"+
+			"Supported kinds: program (a Solana program id: the program and every asset registered under it) / cluster (devnet, testnet, mainnet-beta, localnet, or an http(s) RPC URL) / company (all assets under the company) / root_domain (a whole root domain, including all subdomains) / subdomain (a single precise subdomain) / ip / cidr / icp / keyword.\n"+
 			"Note: hosts a worker touches one by one are [automatically] added to the scope by the system (precise subdomains), but they count toward coverage and list_untested_assets only under a declared domain or IP root (a root_domain/subdomain/ip/cidr goal target or scope added here or manually; a company/icp/keyword entry is not such a root); this tool is for [deliberate widening] — pulling in a whole root domain / whole company, or adding a specific subdomain/IP.\n"+
-			"value: for company pass the company name or id (the company must already exist); for root_domain/subdomain pass a domain; for ip/cidr pass an IP or range; for icp/keyword pass an ICP number or company keyword.\n"+
+			"value: for program pass the base58 program id; for cluster pass the cluster label or RPC URL; for company pass the company name or id (the company must already exist); for root_domain/subdomain pass a domain; for ip/cidr pass an IP or range; for icp/keyword pass an ICP number or company keyword.\n"+
 			"Always give reason explaining the basis (auditable). Use the entries array for multiple entries.",
 		obj(map[string]any{
-			"entries": map[string]any{"type": "array", "description": "batch: [{kind, value}]. kind ∈ company/root_domain/subdomain/ip/cidr/icp/keyword.", "items": map[string]any{"type": "object"}},
-			"kind":    str("[single] company / root_domain / subdomain / ip / cidr / icp / keyword"),
-			"value":   str("[single] company name or id / domain / IP / CIDR / ICP / keyword"),
+			"entries": map[string]any{"type": "array", "description": "batch: [{kind, value}]. kind ∈ program/cluster/company/root_domain/subdomain/ip/cidr/icp/keyword.", "items": map[string]any{"type": "object"}},
+			"kind":    str("[single] program / cluster / company / root_domain / subdomain / ip / cidr / icp / keyword"),
+			"value":   str("[single] program id / cluster label or RPC URL / company name or id / domain / IP / CIDR / ICP / keyword"),
 			"reason":  str("basis for adding (for audit); required"),
 		}),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
@@ -528,10 +560,10 @@ func (t *ToolSet) listUntestedAssets() actool.CoreTool {
 	return readTool(
 		"list_untested_assets",
 		"Query the assets inside the scope of [this task and directly related tasks] that haven't been covered by fact anchors yet (related scopes are read-only; it informs your own judgment about supplementary testing — it doesn't decide for you).\n"+
-			"Optional filter by asset type: root_domain/subdomain/service/app/endpoint/ip.\n"+
+			"Optional filter by asset type: program/instruction/account/authority/mint/token_account (Solana) or root_domain/subdomain/service/app/endpoint/ip.\n"+
 			"Pagination: page starts at 1, page_size defaults to 10. Returns {assets:[{id,type,label}], total, page, page_size}. Only available in a task context.",
 		obj(map[string]any{
-			"type":      str("asset type filter (optional): root_domain/subdomain/service/app/endpoint/ip"),
+			"type":      str("asset type filter (optional): program/instruction/account/authority/mint/token_account/root_domain/subdomain/service/app/endpoint/ip"),
 			"page":      intp("page number, starting at 1 (default 1)"),
 			"page_size": intp("entries per page (default 10)"),
 		}),
@@ -573,11 +605,11 @@ func (t *ToolSet) listAssets() actool.CoreTool {
 		"Query the asset library: search by DSL expression, or fetch directly by id/ids; supports pagination. Only returns assets inside the test scope of [this task and directly related tasks].\n"+
 			"DSL: field=value fuzzy (ILIKE) | field==value exact | field!=value exclusion | numeric fields support > >= < <= | a bare word = full-text fuzzy; combine with AND/OR (AND binds tighter), parentheses for grouping. The asset type uses the separate type parameter, not the DSL.\n"+
 			"When neither id nor ids is passed, dsl must be non-empty (no unconditional full-table queries).\n"+
-			"Available fields: domain (root/sub/service domain), root_domain, ip, url, page_title, icp, service_name, app_name, method (e.g. GET/POST), service_type (http|other), record_type (e.g. A/CNAME), technology (array, =fuzzy ==exact), port/status_code/company_id (integer).\n"+
-			"Examples: status_code>=400 AND technology=shiro ; (port==80 OR port==443) AND technology=nginx",
+			"Available fields: domain (root/sub/service domain), root_domain, ip, url, page_title, icp, service_name, app_name, method (e.g. GET/POST), service_type (http|other), record_type (e.g. A/CNAME), technology (array, =fuzzy ==exact), port/status_code/company_id (integer); Solana assets: address, parent (or program_id) = the program id an asset belongs to, name (instruction name or label), chain.\n"+
+			"Examples: status_code>=400 AND technology=shiro ; (port==80 OR port==443) AND technology=nginx ; with the type parameter = instruction: program_id==<program id> ; with the type parameter = account: parent==<program id> AND address=<account>",
 		obj(map[string]any{
 			"dsl":    str(`DSL query expression (syntax/fields in the tool description). Must be non-empty when id/ids are not passed.`),
-			"type":   str("asset type filter: root_domain|ip|subdomain|app|service|endpoint (a separate field, stackable with dsl; type alone is not enough for a query — dsl is still required)"),
+			"type":   str("asset type filter: program|instruction|account|authority|mint|token_account|root_domain|ip|subdomain|app|service|endpoint (a separate field, stackable with dsl; type alone is not enough for a query — dsl is still required)"),
 			"id":     intp("fetch directly by a single asset id (optional, mutually exclusive with dsl/type)"),
 			"ids":    map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "fetch directly by multiple asset ids (optional, mutually exclusive with dsl/type)"},
 			"limit":  intp("return cap, default 10 (optional)"),

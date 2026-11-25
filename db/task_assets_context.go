@@ -24,13 +24,14 @@ context_tasks AS (
 const contextCoverageCTE = directTaskContextCTE + `,
 target AS (
   SELECT DISTINCT a.id, a.type,
-         COALESCE(a.url, a.domain, a.ip, a.app_name, a.root_domain, '') AS label
+         COALESCE(a.url, a.domain, a.ip, a.app_name, a.root_domain, a.name, a.address, '') AS label
   FROM assets a
   JOIN task_scope ts ON (
        (ts.kind='company'     AND a.company_id = ts.company_id)
     OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
     OR (ts.kind='subdomain'   AND a.domain = ts.domain)
     OR (ts.kind IN ('ip','cidr') AND ts.net >>= try_inet(a.ip))
+    OR ` + solanaScopePredicate + `
     OR (ts.kind='icp' AND (
          lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
          OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
@@ -40,7 +41,7 @@ target AS (
   WHERE ` + declaredScopeFilter + `
 	UNION
 	SELECT a.id, a.type,
-	       COALESCE(a.url, a.domain, a.ip, a.app_name, a.root_domain, '') AS label
+	       COALESCE(a.url, a.domain, a.ip, a.app_name, a.root_domain, a.name, a.address, '') AS label
 	FROM assets a
 	JOIN exploration_anchors ea ON ea.asset_id=a.id
 	JOIN exploration_nodes en ON en.id=ea.node_id AND en.kind='fact'
@@ -57,7 +58,8 @@ tested AS (
 // direct source tasks') declared scope — membership, not literal value: a
 // root_domain scope pulls in every subdomain / service / endpoint whose own
 // root_domain column equals it; an ip/cidr scope pulls in assets whose ip OR
-// IP-literal host falls inside the net. $1 is the task id. Unlike contextCoverageCTE
+// IP-literal host falls inside the net; a program scope pulls in the program and
+// every asset registered under it. $1 is the task id. Unlike contextCoverageCTE
 // it carries neither the fact-anchor union nor the tested set — it is pure "in
 // declared scope", independent of what has already been touched. Used by the
 // agent's list_assets so a query returns the task's relevant assets, not the
@@ -81,6 +83,7 @@ target AS (
     OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
     OR (ts.kind='subdomain'   AND a.domain = ts.domain)
     OR (ts.kind IN ('ip','cidr') AND (ts.net >>= try_inet(a.ip) OR ts.net >>= try_inet(a.domain)))
+    OR ` + solanaScopePredicate + `
     OR (ts.kind='icp' AND (
          lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
          OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value

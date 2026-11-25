@@ -472,7 +472,7 @@ VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (company_id, kind, value) WHERE kind IN ('icp','keyword') DO NOTHING`,
 			companyID, rule.Kind, rule.Value, rule.Raw, reason)
 	default:
-		return false, fmt.Errorf("unsupported company scope kind %q", rule.Kind)
+		return false, fmt.Errorf("unsupported company scope kind %q (a Solana program belongs to a company through company_id, not through company scope)", rule.Kind)
 	}
 	if err != nil {
 		return false, err

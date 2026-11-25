@@ -354,6 +354,9 @@ ON CONFLICT (name) DO NOTHING`,
 	if err := d.seedPersistenceApprovalRules(); err != nil {
 		return fmt.Errorf("seed persistence approval rules: %w", err)
 	}
+	if err := d.seedSolanaApprovalRules(); err != nil {
+		return fmt.Errorf("seed solana approval rules: %w", err)
+	}
 	if err := d.seedDefaultInterceptRulesV2(); err != nil {
 		return fmt.Errorf("seed intercept rules v2: %w", err)
 	}
@@ -401,12 +404,15 @@ ON CONFLICT DO NOTHING`, r.kind, r.pattern, r.note); err != nil {
 // builtinSkillVisibility maps a shipped skill's directory name → the built-in
 // agent keys that should see it by default. The skill FILES themselves live on the
 // filesystem (SkillDir, loaded by norma at runtime); DB only carries this visibility
-// binding. Skills omitted here (e.g. playwright-cli, scopesentry) ship invisible by
-// default — the user turns them on per-agent when needed. scopesentry additionally
-// declares `mcps: ScopeSentry`, which only takes effect once it's made visible and
-// that MCP is enabled/configured.
+// binding. Skills omitted here (e.g. codeaudit, patch-diff, rea) ship invisible by
+// default — the user turns them on per-agent when needed. rea additionally
+// declares `mcps: rea`, which only takes effect once it's made visible and that
+// MCP is enabled/configured.
 var builtinSkillVisibility = map[string][]string{
-	"api-recon": {"auto", "pentest", "worker"},
+	"solana-recon":    {"auto", "pentest", "worker"},
+	"anchor-audit":    {"pentest", "worker"},
+	"solana-bytecode": {"pentest", "worker"},
+	"solana-exploit":  {"pentest", "worker"},
 }
 
 // seedBuiltinSkillVisibility binds the shipped built-in skills to their default

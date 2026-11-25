@@ -17,12 +17,12 @@ import (
 func (t *ToolSet) saveTaskCredential() actool.CoreTool {
 	return writeTool(
 		"save_task_credential",
-		"Record (or update) a test account for this task's target. ALWAYS call this immediately after registering an account on the target, with the exact username and password you chose, so the account is not lost. Also use it to update a known account whose password changed. Same (domain, username) is overwritten in place, not duplicated.\n"+
+		"Record (or update) a test account or wallet for this task's target. ALWAYS call this immediately after creating one, with the exact values, so it is not lost: a web account (domain, username, password), or a Solana test wallet (domain = the cluster label such as devnet, username = the public address, password = the keypair JSON file content) — the secret is sealed at rest and never shown to the model again. Also use it to update a known account whose password changed. Same (domain, username) is overwritten in place, not duplicated.\n"+
 			"Returns: {id, domain, username, source}.",
 		obj(map[string]any{
-			"domain":   str("domain or host the account belongs to (e.g. target.example.com)"),
-			"username": str("login name / email used"),
-			"password": str("the exact password that was set — required"),
+			"domain":   str("domain or host the account belongs to (e.g. target.example.com), or the cluster label of a wallet (devnet, testnet, mainnet-beta, localnet)"),
+			"username": str("login name / email used, or the wallet's public address"),
+			"password": str("the exact password that was set, or the keypair JSON file content — required"),
 			"note":     str("optional context, e.g. which registration flow created it"),
 		}, "domain", "username", "password"),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
