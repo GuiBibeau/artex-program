@@ -228,11 +228,19 @@ func (w *Worker) SetWebSearch(o WebSearchOpts) { w.webSearch = o }
 // only reads from ALL_PROXY, not HTTP(S)_PROXY) works in the capture-off path.
 // Empty proxyAddr → nil (direct, unchanged env).
 //
+// noProxyHosts lists what never goes through the proxy: loopback, and the
+// package registries and source hosts an agent clones or builds from.
+//
 // With a MITM CA (capture on) the proxy URL carries the pace marker userinfo
 // (egress.MarkProxyURL): the recording proxy then paces this connection's
 // requests by the noise profile. Only Bash gets the marker; WebFetch, the http
 // custom tools and enrich keep the plain URL, since egress paces them already.
 // The global proxy (capture off) is left as configured.
+const noProxyHosts = "127.0.0.1,localhost,::1," +
+	"index.crates.io,static.crates.io,static.rust-lang.org," +
+	"github.com,codeload.github.com,raw.githubusercontent.com,objects.githubusercontent.com," +
+	"registry.npmjs.org,pypi.org,files.pythonhosted.org,proxy.golang.org,sum.golang.org"
+
 func proxyEnv(proxyAddr, caCert string) []string {
 	if proxyAddr == "" {
 		return nil
@@ -245,6 +253,14 @@ func proxyEnv(proxyAddr, caCert string) []string {
 		"http_proxy=" + proxyAddr, "https_proxy=" + proxyAddr,
 		"ALL_PROXY=" + proxyAddr, "all_proxy=" + proxyAddr, // socks5 egress: curl reads only this
 		"NODE_USE_ENV_PROXY=1", // Node 24+: honor HTTP(S)_PROXY in built-in fetch/http
+		// Loopback and the package registries bypass the proxy. A local validator,
+		// a fork or a test's own server speaks plain HTTP, WebSocket or its own TLS
+		// on 127.0.0.1, and the recording proxy breaks all three (no WebSocket
+		// capture, unknown CA on a local TLS server). Cargo and other rustls clients
+		// ignore the CA variables, so a crates.io fetch through the proxy fails
+		// with "unknown certificate authority". Local runs are evidenced by their
+		// logs; registries and source hosts are information, never the target.
+		"NO_PROXY=" + noProxyHosts, "no_proxy=" + noProxyHosts,
 	}
 	if caCert != "" {
 		env = append(env,

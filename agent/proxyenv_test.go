@@ -50,6 +50,25 @@ func TestProxyEnvInjectsCAWhenRecording(t *testing.T) {
 	}
 }
 
+// Loopback never goes through the proxy, with or without a CA: a Solana local
+// validator, a fork or a test server on 127.0.0.1 must be reached directly.
+func TestProxyEnvKeepsLoopbackDirect(t *testing.T) {
+	for _, addr := range []string{"socks5://10.0.0.1:1080", "http://127.0.0.1:8788"} {
+		env := proxyEnv(addr, "")
+		found := map[string]string{}
+		for _, e := range env {
+			if k, v, ok := strings.Cut(e, "="); ok && (k == "NO_PROXY" || k == "no_proxy") {
+				found[k] = v
+			}
+		}
+		for _, host := range []string{"127.0.0.1", "localhost", "::1", "index.crates.io", "static.crates.io", "github.com"} {
+			if found["NO_PROXY"] == "" || !strings.Contains(found["NO_PROXY"], host) || found["no_proxy"] != found["NO_PROXY"] {
+				t.Errorf("proxyEnv(%q) bypass = %v, want NO_PROXY and no_proxy to include %s", addr, found, host)
+			}
+		}
+	}
+}
+
 // Only the recording proxy (a CA is present) gets the pace marker; the global
 // proxy of the capture-off path is passed as configured.
 func TestProxyEnvMarksOnlyTheRecordingProxy(t *testing.T) {
