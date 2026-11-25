@@ -11,12 +11,34 @@ ARTEX keeps two linked graphs, both in PostgreSQL (`db/schema.sql`):
 
 | Graph | Answers | Main tables | Code |
 | --- | --- | --- | --- |
-| **Asset graph** | *What exists?* | `companies`, `company_scope`, `assets`, `task_scope` | `db/assets.go`, `db/companies.go`, `db/company_scope.go`, `db/task_assets.go` |
+| **Asset graph** | *What exists?* | `companies`, `company_scope`, `assets`, `task_scope` | `db/assets.go`, `db/solana.go`, `db/companies.go`, `db/company_scope.go`, `db/task_assets.go` |
 | **Exploration graph** | *What was tried, with what result and why?* | `explorations`, `exploration_nodes`, `activity`, `intent_*`, `coverage_*` | `db/exploration.go`, `db/coverage_ledger.go`, `db/finding_assets.go` |
 
 Anchors tie a finding to the assets that justify it (`db/finding_assets.go`). Traffic
 snapshots are archived separately and referenced from findings
 (`db/finding_traffic.go`, `db/finding_traffic_archive.go`, `traffic/archive.go`).
+
+## 1a. Solana program assets
+
+A program is a root asset, as a root domain is for network assets. The Solana asset types are
+`program`, `instruction`, `account`, `authority`, `mint` and `token_account`, all stored with
+`chain = 'solana'`. Every type but `program` carries the program id it belongs to in
+`assets.parent` (`program_id` in the tools), so the tree stays one level deep:
+
+- **Keys.** `program`, `account`, `authority`, `mint` and `token_account` are unique per
+  `(type, address)`; an instruction is unique per `(parent, name)`. Addresses are base58 keys of
+  32 bytes, validated by `db.DecodeBase58`. Type-specific attributes live in `extra` (the tools
+  call them `props`); re-registering an asset unites the arrays in `props` with the stored ones
+  and replaces the scalars.
+- **Scope.** A `task_scope` row of kind `program` (value = program id) covers the program and
+  every asset whose `parent` equals it (`db.solanaScopePredicate`, used by the three coverage
+  CTEs). A row of kind `cluster` (value = `devnet`, `testnet`, `mainnet-beta`, `localnet` or an
+  RPC URL) names the endpoint the evidence must come from.
+- **Receipts.** A Solana asset has no host, so `VerifyFindingProofForNode` matches its bound
+  traffic against the RPC host of the task's cluster rows (`db.taskClusterRPCHosts`).
+- **Writes.** `insert_assets` → `db.UpsertSolanaAsset`. A child whose program is not registered
+  yet creates a bare program row (a connector that does not widen the scope). The manual scope
+  registration (`RegisterTaskAssetScopes`) accepts `program` and `cluster` kinds.
 
 `db.Open` executes the idempotent `schema.sql` on every startup, then applies pending
 numbered migrations from `db/migrations/*.sql`, recording name + SHA-256 in
@@ -41,7 +63,7 @@ numbered migrations from `db/migrations/*.sql`, recording name + SHA-256 in
 | `notify` | Outbound notifications | Email, webhook, Telegram, Feishu, DingTalk with masking and SSRF guards |
 | `report` | Deliverables | Markdown, CSV and JSON rendering of findings |
 | `sidequestion` | Operator Q&A | Asks a human mid-run and suspends intent until answered |
-| `skills/` | Skill definitions | One `SKILL.md` per subdirectory, loaded from `SkillDir()` |
+| `skills/` | Skill definitions | One `SKILL.md` per subdirectory, loaded from `SkillDir()`. `solana-recon`, `anchor-audit`, `solana-bytecode`, `solana-exploit` plus the generic `codeaudit`, `patch-diff`, `rea`, `third-party-code-review` |
 
 The frontend lives in `web/` (Next.js 16, React 19) and is embedded into the Go
 binary via `server/webui_embed.go` when built with `-tags embedui`.
@@ -61,7 +83,9 @@ binary via `server/webui_embed.go` when built with `-tags embedui`.
 5. **Execution.** `Worker.Execute` (`agent/worker.go`) claims an intent, runs tools with
    the guard hooks attached and writes observed facts back to the exploration graph.
 6. **Tools and traffic.** Shell and HTTP/WebFetch calls go through the recording proxy
-   and the egress governor. Platform-owned HTTP clients use `intercept.PinnedDialer`
+   and the egress governor; the Solana CLIs and `curl` honor the proxy variables the worker shell
+   exports, so every JSON-RPC call is recorded. Commands that move funds or change program or
+   token state ask the operator first (`db/intercept_solana_seed.go`). Platform-owned HTTP clients use `intercept.PinnedDialer`
    and `intercept.RedirectCheck`, so a redirect or a direct retry is re-checked at
    dial time. When a proxy is in the path the gate records the pin as name-only: the
    proxy makes the outbound connection, so no IP binding can be claimed.

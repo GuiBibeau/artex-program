@@ -16,7 +16,7 @@ Use this when the IDL fetch and the source search came back empty. The goal is t
 
 Anchor and most Rust programs keep their symbol table and their panic or error strings. They often give the instruction list and every error code in minutes:
 
-- The SBF LLVM tools ship with the Solana CLI: `<solana install>/bin/platform-tools-sdk/sbf/dependencies/platform-tools/llvm/bin/llvm-objdump` and `llvm-readelf`. Add that directory to PATH for the session. Any LLVM with BPF support and `rust-objdump` (cargo-binutils) work too.
+- Disassembler: `llvm-objdump` from an `llvm` package (apt install llvm) or `rust-objdump` (`cargo install cargo-binutils`). The Solana platform-tools copy is at `<solana install>/bin/platform-tools-sdk/sbf/dependencies/platform-tools/llvm/bin/` where it exists: a release install has it after one `cargo-build-sbf --version` run, which downloads platform-tools into `~/.cache/solana/`. Any LLVM with BPF support works.
 - `strings -n 6 program.so | grep -iE 'instruction|authority|signer|owner|bump|seed|insufficient|unauthorized|invalid|overflow|exceeded'`
 - Anchor error codes look like `ErrorCode: 6000` style offsets with their message strings in order (custom errors start at 6000); the messages tell you what each check rejects, and a missing message for a check you expected is a lead.
 - `llvm-nm program.so | grep -iE 'handler|instruction|withdraw|deposit|transfer|authority'` lists the functions of the dispatch; Anchor generates one handler per instruction with a readable name.

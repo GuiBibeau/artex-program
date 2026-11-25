@@ -18,30 +18,23 @@ func TestRenderNoiseProfileOff(t *testing.T) {
 
 func TestRenderNoiseProfileTable(t *testing.T) {
 	for _, c := range []struct {
-		name    string
-		rps     int
-		conc    int
-		delay   int
-		timing  string
-		retries string
-		sql     string
+		name  string
+		rps   int
+		conc  int
+		delay int
 	}{
-		{"quiet", 2, 1, 500, "-T2", "2", "0.5"},
-		{"balanced", 5, 2, 200, "-T3", "2", "0.2"},
-		{"aggressive", 20, 4, 50, "-T4", "1", "0.05"},
+		{"quiet", 2, 1, 500},
+		{"balanced", 5, 2, 200},
+		{"aggressive", 20, 4, 50},
 	} {
 		got := renderNoiseProfile(egress.Profiles[c.name])
 		for _, want := range []string{
 			noiseProfileHeader + c.name,
-			fmt.Sprintf("- nmap: %s --max-rate %d --max-retries %s", c.timing, c.rps, c.retries),
-			fmt.Sprintf("- nuclei: -rate-limit %d -c %d", c.rps, c.conc),
-			fmt.Sprintf("- httpx: -rl %d -t %d", c.rps, c.conc),
-			fmt.Sprintf("- katana: -rl %d -c %d", c.rps, c.conc),
-			fmt.Sprintf("- ffuf: -rate %d -t %d", c.rps, c.conc),
-			fmt.Sprintf("- dalfox scan: --rate-limit %d --workers %d", c.rps, c.conc),
-			fmt.Sprintf("- sqlmap: --delay=%s --threads=1", c.sql),
+			fmt.Sprintf("at most %d requests per second per RPC host", c.rps),
 			fmt.Sprintf("at least %d ms between requests", c.delay),
-			"ARTEX paces its own WebFetch, http custom tool and enrich traffic with this profile. With traffic capture on, Bash commands that use the capture proxy (curl, wget, python-requests) are paced too, by rate and jitter; raw scanners such as nmap and commands that bypass the proxy are not. These flags remain the brake: do not rely on the proxy.",
+			"one getProgramAccounts page or simulation batch at a time",
+			"on 429 or 503 stop and back off",
+			"ARTEX paces its own platform HTTP traffic (http custom tools, the enrich probe) with this profile. With traffic capture on, Bash commands that use the capture proxy (curl, wget, python-requests, node, the Solana CLIs) are paced too, by rate and jitter. These limits remain the brake: do not rely on the proxy.",
 		} {
 			if !strings.Contains(got, want) {
 				t.Errorf("%s: missing %q in:\n%s", c.name, want, got)

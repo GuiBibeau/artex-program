@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import {
+  BoxesIcon,
   BuildingIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -60,6 +61,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { parseCompanyScopeText } from "@/lib/company-scope";
+import { SOLANA_ASSET_TYPES, shortAddress, solanaAssetName, taskAssetTypeLabel } from "@/lib/task-assets";
 import { httpHref } from "@/lib/http-href";
 import type { Asset, Company, CompanyScopeRule } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -102,6 +104,7 @@ const PAGE_SIZES = [25, 50, 100, 200];
 
 const TABS: { key: string; label: string; icon: LucideIcon }[] = [
   { key: "company", label: t("Companies"), icon: BuildingIcon },
+  { key: "solana", label: t("Solana programs"), icon: BoxesIcon },
   { key: "root_domain", label: t("Root domains"), icon: GlobeIcon },
   { key: "ip", label: "IP", icon: NetworkIcon },
   { key: "subdomain", label: t("Subdomains"), icon: GlobeIcon },
@@ -257,11 +260,16 @@ export default function AssetsPage() {
     const dsl = query.trim();
     setLoading(true);
     const offset = page * size;
+    // The Solana tab lists every on-chain asset type together (chain==solana);
+    // the operator's query, when any, narrows inside it.
+    const solanaDSL = tab === "solana" ? (dsl ? `chain==solana AND (${dsl})` : "chain==solana") : "";
     const run = async () => {
       try {
-        const r = dsl
-          ? await api.searchAssets(dsl, tab, size, offset, companyId)
-          : await api.assets(tab, size, offset, companyId);
+        const r = solanaDSL
+          ? await api.searchAssets(solanaDSL, "", size, offset, companyId)
+          : dsl
+            ? await api.searchAssets(dsl, tab, size, offset, companyId)
+            : await api.assets(tab, size, offset, companyId);
         if (assetsRequestRef.current !== request) return;
         setRows(r.assets);
         setRowsTab(tab);
@@ -301,7 +309,8 @@ export default function AssetsPage() {
 
   const companyName = (id?: number) => (id ? (companyById.get(id) ?? "") : "");
 
-  const tabCounts: Record<string, number> = { ...counts, company: companies.length };
+  const solanaCount = SOLANA_ASSET_TYPES.reduce((n, k) => n + (counts[k] ?? 0), 0);
+  const tabCounts: Record<string, number> = { ...counts, company: companies.length, solana: solanaCount };
   const totalAssets = Object.values(counts).reduce((a, b) => a + b, 0);
 
   // rows are already the current server-side page.
@@ -423,6 +432,59 @@ export default function AssetsPage() {
               </Table>
             </div>
           </Card>
+        </TabsContent>
+
+        {/* Solana programs: the programs and everything registered under them */}
+        <TabsContent value="solana" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
+          {searchBox}
+          <AssetCard
+            cols={["", t("Type"), t("Name"), t("Address"), t("Program"), t("Company"), ""]}
+            loaded={loaded}
+            total={total}
+            page={page}
+            size={size}
+            onSize={setSize}
+            onPage={setPage}
+            rows={currentRows}
+            selected={selected}
+            onToggleAll={(ids) => toggleSelectAll(ids)}
+          >
+            {slice(tabData("solana")).map((a) => (
+              <TableRow key={a.id} className={selected.has(a.id) ? "bg-muted/40" : undefined}>
+                <TableCell className="w-8 pr-0">
+                  <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
+                </TableCell>
+                <TableCell className="text-xs">
+                  <Badge variant="outline" className="font-normal">
+                    {taskAssetTypeLabel(a.type)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="max-w-[16rem] truncate text-xs font-medium" title={solanaAssetName(a)}>
+                  {solanaAssetName(a)}
+                </TableCell>
+                <TableCell className="font-mono text-xs" title={a.address}>
+                  {shortAddress(a.address)}
+                </TableCell>
+                <TableCell className="font-mono text-xs" title={a.parent}>
+                  {a.type === "program" ? "—" : shortAddress(a.parent)}
+                </TableCell>
+                <TableCell className="text-xs">
+                  {companyName(a.company_id) || <span className="text-muted-foreground">{t("Unassigned")}</span>}
+                </TableCell>
+                <TableCell className="w-8 pl-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => openDelete([a.id])}
+                    aria-label={t("Delete asset {name}", { name: solanaAssetName(a) })}
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </AssetCard>
         </TabsContent>
 
         {/* Root domains */}

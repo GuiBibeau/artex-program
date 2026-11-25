@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-ARTEX is an autonomous penetration-testing tool. Security fixes are provided only for the latest official release line. The `main` branch is not considered a stable release and may change at any time.
+ARTEX Program is an autonomous Solana program security testing tool. Security fixes are provided only for the latest official release line. The `main` branch is not considered a stable release and may change at any time.
 
 Only the latest release line receives security fixes. Older releases do not receive fixes; please upgrade to the latest release.
 

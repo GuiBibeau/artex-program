@@ -23,6 +23,33 @@ const DSL_FIELDS: { name: string; desc: string; ops: { op: string; desc: string 
     ],
   },
   {
+    name: "address",
+    desc: t("On-chain address (program, account, authority, mint, token account)"),
+    ops: [
+      { op: "=", desc: t("fuzzy match") },
+      { op: "==", desc: t("exact match") },
+      { op: "!=", desc: t("exclude") },
+    ],
+  },
+  {
+    name: "program_id",
+    desc: t("Program id an asset belongs to"),
+    ops: [
+      { op: "=", desc: t("fuzzy match") },
+      { op: "==", desc: t("exact match") },
+      { op: "!=", desc: t("exclude") },
+    ],
+  },
+  {
+    name: "name",
+    desc: t("Instruction name or asset label"),
+    ops: [
+      { op: "=", desc: t("fuzzy match") },
+      { op: "==", desc: t("exact match") },
+      { op: "!=", desc: t("exclude") },
+    ],
+  },
+  {
     name: "ip",
     desc: t("IPv4/IPv6 address"),
     ops: [

@@ -219,7 +219,11 @@ export interface TaskAssetView {
 }
 
 // ---- New unified asset model (new backend) ----
-export type NewAssetType = "root_domain" | "ip" | "subdomain" | "app" | "service" | "endpoint";
+// Solana program assets: a program and what is registered under it. Every type
+// but `program` carries the program id it belongs to in `parent`.
+export type SolanaAssetType = "program" | "instruction" | "account" | "authority" | "mint" | "token_account";
+
+export type NewAssetType = "root_domain" | "ip" | "subdomain" | "app" | "service" | "endpoint" | SolanaAssetType;
 
 export interface Asset {
   id: number;
@@ -253,6 +257,12 @@ export interface Asset {
   method?: string;
   params?: Record<string, unknown>[];
   extra?: Record<string, unknown>;
+  // Solana program assets: "solana", the on-chain key, the owning program id,
+  // and the instruction name (or a display label).
+  chain?: string;
+  address?: string;
+  parent?: string;
+  name?: string;
   last_seen: string;
   task_source?: string;
   task_source_summary?: string;
@@ -290,10 +300,14 @@ export interface TaskAssetScopeMutation {
 // company="c:<id>", root domain without an asset row="r:<domain>". in_scope=false nodes are grey context nodes used only for connecting.
 export interface CoverageGraphNode {
   key: string;
-  kind: "company" | "root_domain" | "subdomain" | "ip" | "service" | "app" | "endpoint";
+  kind: "company" | "root_domain" | "subdomain" | "ip" | "service" | "app" | "endpoint" | SolanaAssetType;
   label: string;
   tested: boolean;
   in_scope: boolean;
+  chain?: string;
+  address?: string;
+  parent?: string;
+  name?: string;
   asset_id?: number;
   company_id?: number;
   domain?: string;
@@ -356,7 +370,7 @@ export interface WorkspaceFile {
 export interface TaskScopeRow {
   id: number;
   task_id: number;
-  kind: "company" | "root_domain" | "subdomain" | "ip" | "cidr" | "icp" | "keyword";
+  kind: "company" | "root_domain" | "subdomain" | "ip" | "cidr" | "icp" | "keyword" | "program" | "cluster";
   company_id?: number;
   company_name?: string; // resolved by a backend JOIN on companies; present only for kind=company
   domain?: string;
@@ -605,7 +619,7 @@ export interface FindingQuery {
 }
 
 // ---- Findings by asset (asset view) ----
-export type FindingAssetKind = "company" | "root_domain" | "subdomain" | "ip" | "service" | "app" | "endpoint" | "none";
+export type FindingAssetKind = "company" | "root_domain" | "subdomain" | "ip" | "service" | "app" | "endpoint" | SolanaAssetType | "none";
 
 // FindingAssetNode is one node of the asset tree. keys look like a:<id> (asset), c:<id>
 // (company), r:<domain> (root domain with no asset row), __none__ (no linked asset).

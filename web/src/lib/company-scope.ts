@@ -171,6 +171,15 @@ export function classifyCompanyScopeLine(
     const error = companyScopeRuleError(rule);
     return error ? { line, error } : { line, rule };
   }
+  // A Solana program id (a base58 key of 32 to 44 characters, no dot) is not
+  // company scope: it belongs to the task scope, or to a program asset linked
+  // to the company. The server would otherwise store it as a dead keyword.
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) {
+    return {
+      line,
+      error: t("A Solana program is not company scope: add it to a task's test scope, or link the program asset to the company"),
+    };
+  }
   if (/icp|filing/i.test(value)) return { line, rule: { kind: "icp", value } };
   return { line, rule: { kind: "keyword", value } };
 }

@@ -75,6 +75,8 @@ const SCOPE_KIND_LABELS: Record<TaskScopeRow["kind"], string> = {
   cidr: "CIDR",
   icp: "ICP",
   keyword: t("Keyword"),
+  program: t("Program"),
+  cluster: t("Cluster"),
 };
 
 const SCOPE_SOURCE_LABELS: Record<TaskScopeRow["source"], string> = {
@@ -126,7 +128,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
   const [rerunning, setRerunning] = React.useState<Set<string>>(new Set());
   // Test scope list + add-form state.
   const [scope, setScope] = React.useState<TaskScopeRow[]>([]);
-  const [scopeKind, setScopeKind] = React.useState<TaskScopeRow["kind"]>("root_domain");
+  const [scopeKind, setScopeKind] = React.useState<TaskScopeRow["kind"]>("program");
   const [scopeValueInput, setScopeValueInput] = React.useState("");
   const [scopeBusy, setScopeBusy] = React.useState(false);
   const [scopeErr, setScopeErr] = React.useState("");
@@ -861,6 +863,8 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               value={scopeKind}
               onChange={(e) => setScopeKind(e.target.value as TaskScopeRow["kind"])}
             >
+              <NativeSelectOption value="program">{t("Program")}</NativeSelectOption>
+              <NativeSelectOption value="cluster">{t("Cluster")}</NativeSelectOption>
               <NativeSelectOption value="root_domain">{t("Root domain")}</NativeSelectOption>
               <NativeSelectOption value="subdomain">{t("Subdomain")}</NativeSelectOption>
               <NativeSelectOption value="ip">IP</NativeSelectOption>
@@ -874,13 +878,17 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               placeholder={
                 scopeKind === "company"
                   ? t("Company name or id")
-                  : scopeKind === "ip" || scopeKind === "cidr"
-                    ? t("e.g. 10.0.0.1 or 10.0.0.0/24")
-                    : scopeKind === "icp"
-                      ? t("e.g. Beijing ICP No.12345678-1")
-                      : scopeKind === "keyword"
-                        ? t("e.g. a company-name keyword")
-                        : t("e.g. example.com")
+                  : scopeKind === "program"
+                    ? t("base58 program id")
+                    : scopeKind === "cluster"
+                      ? t("devnet, testnet, mainnet-beta, localnet or RPC URL")
+                      : scopeKind === "ip" || scopeKind === "cidr"
+                        ? t("e.g. 10.0.0.1 or 10.0.0.0/24")
+                        : scopeKind === "icp"
+                          ? t("e.g. Beijing ICP No.12345678-1")
+                          : scopeKind === "keyword"
+                            ? t("e.g. a company-name keyword")
+                            : t("e.g. example.com")
               }
               value={scopeValueInput}
               onChange={(e) => setScopeValueInput(e.target.value)}

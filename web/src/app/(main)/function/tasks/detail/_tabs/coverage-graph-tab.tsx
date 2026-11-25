@@ -4,13 +4,19 @@ import * as React from "react";
 import type { Graph as G6Graph } from "@antv/g6";
 import {
   AppWindow,
+  Banknote,
+  Boxes,
   Building2,
+  Coins,
   Globe,
+  KeyRound,
   Link2,
   type LucideIcon,
   Radio,
   RefreshCw,
   Server,
+  Split,
+  Wallet,
   Waypoints,
 } from "lucide-react";
 
@@ -46,6 +52,13 @@ const kindMeta: Record<Kind, KindMeta> = {
   service: { label: t("Service"), icon: Radio, iconBg: "bg-amber-500", hex: "#f59e0b", size: 26 },
   app: { label: t("App"), icon: AppWindow, iconBg: "bg-fuchsia-500", hex: "#d946ef", size: 26 },
   endpoint: { label: t("Endpoint"), icon: Link2, iconBg: "bg-rose-500", hex: "#f43f5e", size: 20 },
+  // Solana program assets: the program is a root, the rest hang off it.
+  program: { label: t("Program"), icon: Boxes, iconBg: "bg-violet-500", hex: "#8b5cf6", size: 40 },
+  instruction: { label: t("Instruction"), icon: Split, iconBg: "bg-purple-500", hex: "#a855f7", size: 26 },
+  account: { label: t("Account"), icon: Wallet, iconBg: "bg-teal-500", hex: "#14b8a6", size: 26 },
+  authority: { label: t("Authority"), icon: KeyRound, iconBg: "bg-red-500", hex: "#ef4444", size: 26 },
+  mint: { label: t("Mint"), icon: Coins, iconBg: "bg-yellow-500", hex: "#eab308", size: 24 },
+  token_account: { label: t("Token account"), icon: Banknote, iconBg: "bg-lime-600", hex: "#65a30d", size: 22 },
 };
 
 // G6 node icons use the platform's lucide icons: render lucide SVG paths (v1.22) as white-stroked
@@ -80,6 +93,25 @@ const KIND_ICON: Record<Kind, string> = {
   ),
   endpoint: svgUri(
     '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/>',
+  ),
+  // Paths copied from lucide-react 1.22.0 (boxes, split, wallet, key-round, coins, banknote).
+  program: svgUri(
+    '<path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/>',
+  ),
+  instruction: svgUri(
+    '<path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/>',
+  ),
+  account: svgUri(
+    '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  ),
+  authority: svgUri(
+    '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+  ),
+  mint: svgUri(
+    '<path d="M13.744 17.736a6 6 0 1 1-7.48-7.48"/><path d="M15 6h1v4"/><path d="m6.134 14.768.866-.5 2 3.464"/><circle cx="16" cy="8" r="6"/>',
+  ),
+  token_account: svgUri(
+    '<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   ),
 };
 
@@ -363,6 +395,13 @@ function AssetSheet({
                     ) : (
                       <span className="text-neutral-400">{t("Out of scope (connecting node)")}</span>
                     )}
+                  </DetailRow>
+                  <DetailRow label={t("Name")}>{node.name}</DetailRow>
+                  <DetailRow label={t("Address")}>
+                    {node.address ? <span className="font-mono text-xs break-all">{node.address}</span> : undefined}
+                  </DetailRow>
+                  <DetailRow label={t("Program")}>
+                    {node.parent ? <span className="font-mono text-xs break-all">{node.parent}</span> : undefined}
                   </DetailRow>
                   <DetailRow label={t("Domain")}>{node.domain}</DetailRow>
                   <DetailRow label={t("Root domain")}>{node.root_domain}</DetailRow>

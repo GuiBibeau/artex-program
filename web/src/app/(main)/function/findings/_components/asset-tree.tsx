@@ -3,17 +3,22 @@
 import * as React from "react";
 
 import {
+  BoxesIcon,
   BuildingIcon,
   ChevronRightIcon,
+  CoinsIcon,
   CircleDashedIcon,
   GlobeIcon,
   LayoutTemplateIcon,
   LinkIcon,
   type LucideIcon,
+  KeyRoundIcon,
   NetworkIcon,
   RefreshCwIcon,
   SearchIcon,
   SmartphoneIcon,
+  SplitIcon,
+  WalletIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +36,12 @@ const KIND_ICON: Record<FindingAssetKind, LucideIcon> = {
   app: SmartphoneIcon,
   service: LayoutTemplateIcon,
   endpoint: LinkIcon,
+  program: BoxesIcon,
+  instruction: SplitIcon,
+  account: WalletIcon,
+  authority: KeyRoundIcon,
+  mint: CoinsIcon,
+  token_account: WalletIcon,
   none: CircleDashedIcon,
 };
 
@@ -42,6 +53,12 @@ const KIND_LABEL: Record<FindingAssetKind, string> = {
   app: t("App"),
   service: t("Service"),
   endpoint: t("Endpoint"),
+  program: t("Program"),
+  instruction: t("Instruction"),
+  account: t("Account"),
+  authority: t("Authority"),
+  mint: t("Mint"),
+  token_account: t("Token account"),
   none: t("Unlinked"),
 };
 

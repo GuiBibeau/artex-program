@@ -79,6 +79,12 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
   app: t("App"),
   service: t("Service"),
   endpoint: t("Endpoint"),
+  program: t("Program"),
+  instruction: t("Instruction"),
+  account: t("Account"),
+  authority: t("Authority"),
+  mint: t("Mint"),
+  token_account: t("Token account"),
 };
 
 const ASSET_COLORS: Record<string, string> = {
@@ -88,6 +94,12 @@ const ASSET_COLORS: Record<string, string> = {
   app: "bg-orange-400",
   service: "bg-cyan-500",
   endpoint: "bg-emerald-500",
+  program: "bg-violet-500",
+  instruction: "bg-purple-500",
+  account: "bg-teal-500",
+  authority: "bg-red-500",
+  mint: "bg-yellow-500",
+  token_account: "bg-lime-600",
 };
 
 function statusColor(code: number): string {

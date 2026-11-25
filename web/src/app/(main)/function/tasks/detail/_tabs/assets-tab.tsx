@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import {
+  BoxesIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   GlobeIcon,
@@ -40,7 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { parseCompanyScopeText } from "@/lib/company-scope";
-import { taskAssetSourceLabel } from "@/lib/task-assets";
+import { SOLANA_ASSET_TYPES, shortAddress, solanaAssetName, taskAssetSourceLabel, taskAssetTypeLabel } from "@/lib/task-assets";
 import type { Asset, NewAssetType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { setVisibleInterval } from "@/lib/polling";
@@ -58,7 +59,11 @@ const METHOD_COLOR: Record<string, string> = {
   PUT: "bg-amber-100 text-amber-700",
 };
 
-const TABS: { key: NewAssetType; label: string; icon: LucideIcon }[] = [
+// "solana" lists every on-chain asset type together; the other tabs are one type each.
+type AssetTab = NewAssetType | "solana";
+
+const TABS: { key: AssetTab; label: string; icon: LucideIcon }[] = [
+  { key: "solana", label: t("Solana programs"), icon: BoxesIcon },
   { key: "root_domain", label: t("Root domain"), icon: GlobeIcon },
   { key: "ip", label: "IP", icon: NetworkIcon },
   { key: "subdomain", label: t("Subdomain"), icon: GlobeIcon },
@@ -87,6 +92,14 @@ function assetLabel(asset: Asset): string {
     }
     case "endpoint":
       return firstText([[asset.method, asset.url].filter(Boolean).join(" ")], `#${asset.id}`);
+    case "program":
+    case "account":
+    case "authority":
+    case "mint":
+    case "token_account":
+      return firstText([solanaAssetName(asset), asset.address], `#${asset.id}`);
+    case "instruction":
+      return firstText([solanaAssetName(asset)], `#${asset.id}`);
   }
 }
 
@@ -360,7 +373,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
   const [total, setTotal] = React.useState(0);
   const [counts, setCounts] = React.useState<Record<string, number>>({});
   const [loaded, setLoaded] = React.useState(false);
-  const [tab, setTab] = React.useState<NewAssetType>("root_domain");
+  const [tab, setTab] = React.useState<AssetTab>("solana");
   const [page, setPage] = React.useState(0);
   const [size, setSize] = React.useState(50);
   const [query, setQuery] = React.useState("");
@@ -401,10 +414,15 @@ export function AssetsTab({ taskId }: { taskId: string }) {
       try {
         // The search always stays within this task's assets: taskAssets and
         // searchTaskAssets both pin task_id server-side.
+        // The Solana tab always searches chain==solana; the operator's query
+        // narrows inside it.
+        const solanaDSL = tab === "solana" ? (dsl ? `chain==solana AND (${dsl})` : "chain==solana") : "";
         const [current, nextCounts] = await Promise.all([
-          dsl
-            ? api.searchTaskAssets(taskId, dsl, tab, size, page * size)
-            : api.taskAssets(taskId, tab, size, page * size),
+          solanaDSL
+            ? api.searchTaskAssets(taskId, solanaDSL, "", size, page * size)
+            : dsl
+              ? api.searchTaskAssets(taskId, dsl, tab, size, page * size)
+              : api.taskAssets(taskId, tab, size, page * size),
           api.assetCounts(taskId),
         ]);
         if (!active || assetsRequestRef.current !== request) return;
@@ -477,7 +495,9 @@ export function AssetsTab({ taskId }: { taskId: string }) {
   );
 
   const commonCardProps = { loaded, onPage: setPage, onSize: setSize, page, size, total };
-  const totalAll = TABS.reduce((sum, item) => sum + (counts[item.key] ?? 0), 0);
+  const solanaCount = SOLANA_ASSET_TYPES.reduce((sum, key) => sum + (counts[key] ?? 0), 0);
+  const tabCount = (key: string) => (key === "solana" ? solanaCount : (counts[key] ?? 0));
+  const totalAll = TABS.reduce((sum, item) => sum + tabCount(item.key), 0);
 
   const searchBox = (
     <AssetDslSearch
@@ -506,7 +526,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
 
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as NewAssetType)}
+        onValueChange={(value) => setTab(value as AssetTab)}
         className="flex min-h-0 flex-1 flex-col gap-2"
       >
         <div className="overflow-x-auto overflow-y-hidden">
@@ -515,13 +535,43 @@ export function AssetsTab({ taskId }: { taskId: string }) {
               <TabsTrigger key={item.key} value={item.key}>
                 <item.icon data-icon="inline-start" />
                 {item.label}
-                <span className="text-muted-foreground tabular-nums">{counts[item.key] ?? 0}</span>
+                <span className="text-muted-foreground tabular-nums">{tabCount(item.key)}</span>
               </TabsTrigger>
             ))}
           </TabsList>
         </div>
 
         {searchBox}
+
+        <TabsContent value="solana" className="mt-0 flex min-h-0 flex-1 flex-col">
+          <AssetCard
+            cols={[t("Type"), t("Name"), t("Address"), t("Program"), t("Source"), t("Actions")]}
+            {...commonCardProps}
+          >
+            {rows.map((asset) => (
+              <TableRow key={asset.id}>
+                <TableCell className="text-xs">
+                  <Badge variant="outline" className="font-normal">
+                    {taskAssetTypeLabel(asset.type)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="max-w-[16rem] truncate font-medium text-xs" title={solanaAssetName(asset)}>
+                  {solanaAssetName(asset)}
+                </TableCell>
+                <TableCell className="font-mono text-xs" title={asset.address}>
+                  {shortAddress(asset.address)}
+                </TableCell>
+                <TableCell className="font-mono text-xs" title={asset.parent}>
+                  {asset.type === "program" ? "—" : shortAddress(asset.parent)}
+                </TableCell>
+                <TableCell>
+                  <SourceCell asset={asset} />
+                </TableCell>
+                <TableCell className="w-16">{removeButton(asset)}</TableCell>
+              </TableRow>
+            ))}
+          </AssetCard>
+        </TabsContent>
 
         <TabsContent value="root_domain" className="mt-0 flex min-h-0 flex-1 flex-col">
           <AssetCard cols={[t("Domain"), t("ICP record"), t("Source"), t("Actions")]} {...commonCardProps}>

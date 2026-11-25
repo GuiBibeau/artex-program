@@ -1,45 +1,77 @@
 <div align="center">
 
-<img src="web/public/logo.svg" width="84" alt="ARTEX logo" />
+<img src="web/public/logo.svg" width="84" alt="ARTEX Program logo" />
 
-# ARTEX
+# ARTEX Program
 
-**Autonomous penetration testing that keeps its receipts.**
+**Autonomous Solana program security testing that keeps its receipts.**
 
 
-Self-hosted multi-agent offensive security. A planner explores, workers run real tools,
-and every finding stays bound to the assets and HTTP traffic that prove it.
+Self-hosted multi-agent offensive security for Solana programs. A planner explores, workers run
+real tools (`solana`, `anchor`, `surfpool`, your scripts), and every finding stays bound to the
+assets and the on-chain evidence that prove it.
 
-[![Release](https://img.shields.io/github/v/release/BaaRai/ARTEX?label=release&color=6b34db)](https://github.com/BaaRai/ARTEX/releases)
 [![License](https://img.shields.io/github/license/BaaRai/ARTEX?color=6b34db)](LICENSE)
-[![CI](https://github.com/BaaRai/ARTEX/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/BaaRai/ARTEX/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/github/go-mod/go-version/BaaRai/ARTEX?color=6b34db)](go.mod)
-[![Discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/VKyvMTcgXh)
 
-[Quick start](#quick-start) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Install](#installation) · [Configuration](#configuration) · [Security](SECURITY.md)
-
-[![Join us on Discord](https://img.shields.io/badge/JOIN%20US%20ON-DISCORD-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/VKyvMTcgXh)
+[Quick start](#quick-start) · [Testing a Solana program](#testing-a-solana-program) · [How it works](#how-it-works) · [Install](#installation) · [Configuration](#configuration) · [Security](SECURITY.md)
 
 </div>
 
 ---
 
-ARTEX is a self-hosted, LLM-driven penetration testing platform. It is not a chat wrapper around
-a scanner: a planner splits a goal into intents, workers execute them with real tools, and the
-results are written back into **two linked graphs**: one for what you know about the target, one
-for how the test is progressing. Every finding can carry the captured request and response that
-justify it, and every autonomous action passes through scope rules, approval gates and budgets.
+ARTEX Program is a self-hosted, LLM-driven security testing platform for Solana programs, derived
+from [ARTEX](https://github.com/BaaRai/ARTEX). It is not a chat wrapper around a scanner: a planner
+splits a goal into intents, workers execute them with real tools, and the results are written back
+into **two linked graphs**: one for what you know about the program, one for how the test is
+progressing. Every finding can carry the JSON-RPC exchange (a simulation, a transaction) that
+justifies it, and every autonomous action passes through scope rules, approval gates and budgets.
 
 - **It explores, it doesn't chat.** Goal decomposition, intent dispatch, worker execution and
   write-back form a closed loop that keeps advancing until the goal is proven.
-- **Two graphs, one audit trail.** The shared asset graph says *what exists*; the per-task
+- **Two graphs, one audit trail.** The shared asset graph says *what exists* (the program, its
+  instructions, its accounts and PDAs, its authorities, its mints and token accounts); the per-task
   exploration graph says *what was tried, what it produced, and why*. Anchors link the two.
-- **Findings with evidence.** A recording MITM proxy and a browser extension capture real traffic;
-  findings, evidence quotes and retests are tied to the exact request/response.
-- **Autonomy with brakes.** Human-in-the-loop approvals, argv-prefix rules, scope/deny gates,
-  token and turn budgets, a target noise governor, and prompt-injection framing on tool output.
+- **Findings with evidence.** A recording proxy captures every RPC call the agents make; findings,
+  evidence quotes and retests are tied to the exact exchange, matched on the RPC host of the
+  cluster in scope.
+- **Autonomy with brakes.** Human-in-the-loop approvals on every command that moves funds or
+  changes program or token state, scope and cluster rules, token and turn budgets, RPC pacing, and
+  prompt-injection framing on tool output and on-chain data.
 - **Self-hosted and model-agnostic.** One Go binary with the Next.js UI embedded, PostgreSQL,
   your own Anthropic/OpenAI-compatible endpoint, or a local Ollama.
+
+## Testing a Solana program
+
+1. **Install the toolchain the agents call** on the host or in the image: the Solana CLI, the
+   Anchor CLI, Surfpool, a Rust toolchain, and Node 20+ for scripts (the Docker image has all of
+   them; see [Installation](#installation)).
+2. **Create a task** and name the target in the goal or the description: the program id and the
+   cluster, for example: *"Audit program `Eq...` on devnet. Look for missing signer and owner
+   checks, PDA derivation flaws, and any way to move vault funds. Live transactions on devnet
+   only, at most 0.5 SOL."* The goal decomposer registers `program` and `cluster` scope entries,
+   extracts your operation constraints, and splits the goal into verifiable results.
+3. **Let the loop run.** The planner dispatches intents; each worker maps the program (program
+   account and upgrade authority, IDL or bytecode, instructions, accounts, PDAs, authorities,
+   mints), tests the constraints it finds, proves candidates with `simulateTransaction`, a
+   Surfpool fork or a local validator first, and registers instructions, accounts, authorities,
+   mints and token accounts in the asset graph as it goes.
+4. **Approve what needs approval.** Reads and simulation run free. Every command that moves funds,
+   changes staking, voting, program or token state, deploys with `anchor`, or submits a
+   transaction from a command line asks the operator first. The target gate (opt-in) also asks
+   before the first connection to an RPC host.
+5. **Fund the proof when the goal needs a live transaction.** Workers own no funds: they create a
+   wallet in their work directory, seal its keypair in the task credentials, and ask you through
+   `ask_operator` to run the exact funding command (an airdrop on devnet or testnet, a transfer
+   on mainnet-beta). They never print the key.
+6. **Read the receipts.** A finding binds the recorded exchanges in reproduction order (control
+   call, attack, verification); the report writer turns them into a Markdown report with measured
+   impact, the proof basis (executed live, executed lab, or static analysis) and a remediation.
+
+Skills ship with the platform and teach the method: `solana-recon` (mapping a program on a
+cluster), `anchor-audit` (white-box review of Anchor source), `solana-bytecode` (SBF analysis
+without source) and `solana-exploit` (from candidate to executed PoC), plus the generic
+`codeaudit`, `patch-diff` and `third-party-code-review`.
 
 ---
 
@@ -131,8 +163,10 @@ the ordered `llm_profile_ids`. Omitting `llm_rotate` on an update preserves its 
 ARTEX separates *what the goals are* from *how far testing has progressed* into two independent
 graphs linked by anchors:
 
-- **Asset graph (shared across tasks).** One source of truth for `root_domain / subdomain / ip /
-  service / app / endpoint`, owned by companies. Parent-child relationships and deduplication keys
+- **Asset graph (shared across tasks).** One source of truth for Solana assets — `program /
+  instruction / account / authority / mint / token_account`, keyed by on-chain address and owned by
+  companies (a protocol or a team) — plus the network assets around them (`root_domain /
+  subdomain / ip / service / app / endpoint`). Parent-child relationships and deduplication keys
   are computed by the program; agents only submit raw observations.
 - **Exploration graph (per task).** The task's reasoning and progress: `goal / intent / fact /
   finding / hint` nodes connected by `spawns / derived_from / yields / proves` edges into a lineage
@@ -157,16 +191,20 @@ flowchart LR
   end
   subgraph AG["Asset graph (globally shared · source of truth)"]
     direction TB
-    RD["root_domain"]
-    SD["subdomain"]
-    SV["service"]
-    EP["endpoint"]
-    RD --> SD --> SV --> EP
+    PR["program"]
+    IN["instruction"]
+    AC["account / PDA"]
+    AU["authority"]
+    MI["mint / token account"]
+    PR --> IN
+    PR --> AC
+    PR --> AU
+    PR --> MI
   end
-  I1 -. anchor .-> SD
-  F1 -. anchor .-> SV
-  I2 -. anchor .-> EP
-  FD -. anchor .-> EP
+  I1 -. anchor .-> IN
+  F1 -. anchor .-> AC
+  I2 -. anchor .-> AU
+  FD -. anchor .-> MI
 ```
 
 The **planner** reads the exploration graph, judges goals, and dispatches intents only when there
@@ -194,8 +232,8 @@ sequenceDiagram
   Note over P,FR: most wake-ups dispatch 0 (no new direction means done)
   W->>FR: claimNext claims one intent
   W->>DB: fetch the raw assets of the intent's asset_ids
-  W->>PX: real tool execution (Kali / Bash / HTTP)
-  PX-->>W: response (fully traced + CA verified)
+  W->>PX: real tool execution (solana / anchor / surfpool / Bash / curl)
+  PX-->>W: JSON-RPC response (recorded: the finding's receipt)
   W->>DB: write back fact / asset / finding + per-step activity
   DB-->>EV: graph change
   EV-->>P: wake again (closed loop)
@@ -203,13 +241,13 @@ sequenceDiagram
 
 ### Durable attack chains, shared worker memory
 
-Real attack chains are multi-step and ordered (find an injection → get credentials → move
-laterally). The planner keeps a **todolist retained per task across wake-ups**: it records the
+Real attack chains are multi-step and ordered (find a missing signer check → build the attack
+transaction → drain the vault on a fork → confirm on devnet). The planner keeps a **todolist retained per task across wake-ups**: it records the
 chain once, then dispatches the next step only when its prerequisites are satisfied by facts.
 
 Workers can also **search each other's execution traces** (`search_all_worker_traces`,
 `list_worker_traces`, `get_worker_trace`). Observations that never became formal facts (an error
-message, a response snippet, a hidden parameter) are still reusable by the next worker, while each
+program log line, an unchecked account, a bump that worked) are still reusable by the next worker, while each
 worker remains confined to the intent it claimed.
 
 ---
@@ -218,10 +256,17 @@ worker remains confined to the intent it claimed.
 
 ### Evidence, not chat logs
 
-- **Recording MITM proxy** (`:8788`) with a generated CA: every Bash/HTTP tool call is traced, and
-  request/response evidence can be bound to a finding.
-- **Browser extension** (`extension/`) for authenticated targets: log in once (captcha, email OTP,
-  2FA included), capture the session, and the requests/responses land in the same traffic store.
+- **Recording proxy** (`:8788`) with a generated CA: every RPC call and HTTP request the agents
+  make through Bash is traced, and a JSON-RPC exchange (a `simulateTransaction` result, a sent
+  transaction) can be bound to a finding.
+- **Live-transaction approvals**: the built-in rules ask the operator before `solana` money,
+  staking, voting and program commands, `spl-token` state changes, `anchor deploy` / `upgrade`,
+  and any command line that calls `sendTransaction`; reads and simulation stay free.
+- **Funded-wallet protocol**: workers create test wallets in their work directory, seal the
+  keypairs in the task credentials and ask the operator for the funds; no key reaches a fact, a
+  finding or the model's context.
+- **Browser extension** (`extension/`) for the web assets around a program (a frontend, a docs
+  portal): log in once, capture the session, and the requests/responses land in the same traffic store.
 
   <details>
   <summary>Using the traffic capture extension</summary>
@@ -267,9 +312,10 @@ worker remains confined to the intent it claimed.
   the wrap-up reserve only has that reserve left, so the revived run wraps up instead of starting
   another worker. The per-worker cost estimate starts again from the defaults (50,000 tokens and
   10 turns) until a worker finishes in this process.
-- **Noise governor**: `ARTEX_NOISE_PROFILE=quiet|balanced|aggressive` paces requests ARTEX sends to
-  targets (per-host rate, burst, in-flight limit, jitter, backoff on 429/503, short GET caching).
-  With a profile set, agents also receive low-and-slow flags for the installed scanners.
+- **Noise governor**: `ARTEX_NOISE_PROFILE=quiet|balanced|aggressive` paces requests ARTEX sends
+  to targets (per-host rate, burst, in-flight limit, jitter, backoff on 429/503, short GET caching).
+  With a profile set, agents also receive RPC pacing limits (requests per second per RPC host, one
+  `getProgramAccounts` page or simulation batch at a time).
 - **Untrusted-output boundary (on by default)**: tool results are framed between nonce-tagged
   markers so the model treats them as data, not instructions. Disable with
   `ARTEX_UNTRUSTED_BOUNDARY=0`.
@@ -278,21 +324,12 @@ worker remains confined to the intent it claimed.
 
 - **Coverage ledger and force-directed coverage graph**: in-scope assets are highlighted as tested
   or untested, with linked intents, facts and findings per node.
-- **Company-scoped asset graph**: shared across tasks, deduplicated by the program, with
-  domain → subdomain → service → endpoint containment.
-- **ScopeSentry sync**: pull asset data from a
-  [ScopeSentry](https://github.com/Autumn-27/ScopeSentry) instance by project or task, merged by
-  company scope into the asset graph for agents to explore.
-
-  <details>
-  <summary>Syncing from ScopeSentry</summary>
-
-  - On the **Asset Sync** page, enter the ScopeSentry address and API key;
-  - Choose the targets and asset types by **project** or **task** (domains / subdomains / IPs /
-    ports / sites / endpoints…);
-  - Import: rows are merged by company asset scope and become part of the asset graph.
-
-  </details>
+- **Program-scoped asset graph**: shared across tasks, deduplicated by the program, with
+  `program → instruction / account / authority / mint / token_account` containment. A task's
+  `program` scope covers the program and everything registered under it; its `cluster` scope names
+  the RPC endpoint the evidence must come from.
+- **On-chain search**: the asset search language reaches `address`, `program_id`, `name` and
+  `chain` (`parent==<program id> AND address=<account>`).
 - **Task categories, templates, relations and archives** for repeatable engagements.
 
 ### Platform
@@ -353,6 +390,11 @@ get.docker.com include it; distro packages and Homebrew's docker CLI (Colima) ma
 `brew install docker-buildx`. Without it the build stops at the first stage with
 `failed to parse platform`.
 
+> **ARTEX Program has no published image.** `ghcr.io/baarai/artex` is the upstream ARTEX image
+> (web-oriented, without the Solana toolchain). Build from this checkout with
+> `docker compose up -d --build`; the instructions below apply once an image of this fork is
+> published. This image is `linux/amd64` only (see the note above).
+
 The release workflow publishes a multi-arch image (`linux/amd64`, `linux/arm64`) to GitHub
 Container Registry on each `v*` tag, with tags `:latest`, `:v<version>`, and `:<version>`.
 v0.7.0 predates that step, so there is no `artex` package yet: until the next tagged release,
@@ -394,10 +436,12 @@ its own variable. The server percent-encodes it into the connection URL, so a pa
 `/`, `?`, `%`, `@`, `:` or spaces. In `.env`, quote a value that contains `#`, and write `$$` for a
 literal `$`. The `ARTEX_PG_*` variables take the password raw; quote it in a shell.
 
-The image includes a scanner toolchain (`nmap`, `nuclei`, `httpx`, `katana`, `ffuf`, `dalfox`,
-`sqlmap`, `ripgrep`, `curl`, `npm`, …) and built-in `/app/skills`. The GHCR Compose file below
-persists `./keys` and `./data`; it does not mount a host `skills/` directory, so the image's
-built-in skills are used.
+The image includes a Solana toolchain (`solana`, `solana-keygen`, `spl-token`,
+`solana-test-validator`, `cargo-build-sbf`, `anchor`, `surfpool`), a Rust toolchain, Node 22 for
+scripts, and built-in `/app/skills`. It is built for `linux/amd64`: the Solana CLI, Anchor and
+Surfpool publish no Linux arm64 binaries, so on an arm64 host set
+`DOCKER_DEFAULT_PLATFORM=linux/amd64`. The GHCR Compose file below persists `./keys` and `./data`;
+it does not mount a host `skills/` directory, so the image's built-in skills are used.
 
 #### Compose stack from the prebuilt image
 
@@ -888,7 +932,7 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 
 ## Architecture
 
-ARTEX is an **LLM multi-agent-driven autonomous penetration testing system**: a Go monolithic
+ARTEX Program is an **LLM multi-agent-driven autonomous Solana program security testing system**: a Go monolithic
 backend (with the Next.js UI embedded) + PostgreSQL. Agent capabilities come from the
 [`norma`](https://github.com/Autumn-27/norma) SDK (`agentcore` / `tool` / `permission` / `harness` /
 `memory` / `transcript`). At its core is the **dual-graph architecture**, plus two autonomy
