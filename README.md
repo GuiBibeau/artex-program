@@ -6,13 +6,12 @@
 
 **Autonomous Solana program security testing that keeps its receipts.**
 
+Self-hosted, LLM-driven security testing for Solana programs. A planner explores. Workers run real
+tools (`solana`, `anchor`, `surfpool`, your scripts). Every finding stays bound to the assets and
+the recorded on-chain evidence that prove it.
 
-Self-hosted multi-agent offensive security for Solana programs. A planner explores, workers run
-real tools (`solana`, `anchor`, `surfpool`, your scripts), and every finding stays bound to the
-assets and the on-chain evidence that prove it.
-
-[![License](https://img.shields.io/github/license/BaaRai/ARTEX?color=6b34db)](LICENSE)
-[![Go](https://img.shields.io/github/go-mod/go-version/BaaRai/ARTEX?color=6b34db)](go.mod)
+[![License](https://img.shields.io/github/license/GuiBibeau/artex-program?color=6b34db)](LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/GuiBibeau/artex-program?color=6b34db)](go.mod)
 
 [Quick start](#quick-start) · [Testing a Solana program](#testing-a-solana-program) · [How it works](#how-it-works) · [Install](#installation) · [Configuration](#configuration) · [Security](SECURITY.md)
 
@@ -20,110 +19,141 @@ assets and the on-chain evidence that prove it.
 
 ---
 
-ARTEX Program is a self-hosted, LLM-driven security testing platform for Solana programs, derived
-from [ARTEX](https://github.com/BaaRai/ARTEX). It is not a chat wrapper around a scanner: a planner
-splits a goal into intents, workers execute them with real tools, and the results are written back
-into **two linked graphs**: one for what you know about the program, one for how the test is
-progressing. Every finding can carry the JSON-RPC exchange (a simulation, a transaction) that
-justifies it, and every autonomous action passes through scope rules, approval gates and budgets.
+ARTEX Program is a self-hosted security testing platform for Solana programs. LLM agents do the
+work. A planner splits a goal into intents. Workers execute the intents with real tools. The
+results go into **two linked graphs**. One graph holds what you know about the program. The other
+graph holds how far the test has progressed. A finding can carry the JSON-RPC exchange that proves
+it, for example a simulation or a transaction. Every autonomous action passes through scope rules,
+approval gates and budgets.
 
-- **It explores, it doesn't chat.** Goal decomposition, intent dispatch, worker execution and
-  write-back form a closed loop that keeps advancing until the goal is proven.
-- **Two graphs, one audit trail.** The shared asset graph says *what exists* (the program, its
-  instructions, its accounts and PDAs, its authorities, its mints and token accounts); the per-task
-  exploration graph says *what was tried, what it produced, and why*. Anchors link the two.
-- **Findings with evidence.** A recording proxy captures every RPC call the agents make; findings,
-  evidence quotes and retests are tied to the exact exchange, matched on the RPC host of the
-  cluster in scope.
-- **Autonomy with brakes.** Human-in-the-loop approvals on every command that moves funds or
-  changes program or token state, scope and cluster rules, token and turn budgets, RPC pacing, and
-  prompt-injection framing on tool output and on-chain data.
+ARTEX Program is a fork of [ARTEX](https://github.com/BaaRai/ARTEX), re-oriented to Solana programs.
+
+- **It explores, it does not chat.** Goal decomposition, intent dispatch, worker execution and
+  write-back form a closed loop. The loop advances until the goal is proven.
+- **Two graphs, one audit trail.** The shared asset graph says *what exists*: the program and
+  everything registered under it. The per-task exploration graph says *what was tried, what it
+  produced, and why*. Anchors link the two.
+- **Findings with evidence.** A recording proxy captures every RPC call the agents make. A
+  finding is tied to the exact exchange on the RPC host of the cluster in scope.
+- **Autonomy with brakes.** The operator approves every command that moves funds or changes
+  program or token state. Scope and cluster rules, token and turn budgets, RPC pacing, and
+  prompt-injection framing on tool output and on-chain data apply to every action.
 - **Self-hosted and model-agnostic.** One Go binary with the Next.js UI embedded, PostgreSQL,
-  your own Anthropic/OpenAI-compatible endpoint, or a local Ollama.
+  your own Anthropic or OpenAI-compatible endpoint, or a local Ollama.
 
 ## Testing a Solana program
 
-1. **Install the toolchain the agents call** on the host or in the image: the Solana CLI, the
-   Anchor CLI, Surfpool, a Rust toolchain, and Node 20+ for scripts (the Docker image has all of
-   them; see [Installation](#installation)).
-2. **Create a task** and name the target in the goal or the description: the program id and the
-   cluster, for example: *"Audit program `Eq...` on devnet. Look for missing signer and owner
-   checks, PDA derivation flaws, and any way to move vault funds. Live transactions on devnet
-   only, at most 0.5 SOL."* The goal decomposer registers `program` and `cluster` scope entries,
+1. **Install the toolchain the agents call**, on the host or in the image: the Solana CLI, the
+   Anchor CLI, Surfpool, a Rust toolchain, and Node 20 or later for scripts. The Docker image has
+   all of them. See [Installation](#installation).
+2. **Create a task.** Name the target in the goal or the description: the program id and the
+   cluster. Example: *"Audit program `Eq...` on devnet. Look for missing signer and owner checks,
+   PDA derivation flaws, and any way to move vault funds. Live transactions on devnet only, at
+   most 0.5 SOL."* The goal decomposer registers the `program` and `cluster` scope entries,
    extracts your operation constraints, and splits the goal into verifiable results.
-3. **Let the loop run.** The planner dispatches intents; each worker maps the program (program
-   account and upgrade authority, IDL or bytecode, instructions, accounts, PDAs, authorities,
-   mints), tests the constraints it finds, proves candidates with `simulateTransaction`, a
-   Surfpool fork or a local validator first, and registers instructions, accounts, authorities,
-   mints and token accounts in the asset graph as it goes.
-4. **Approve what needs approval.** Reads and simulation run free. Every command that moves funds,
-   changes staking, voting, program or token state, deploys with `anchor`, or submits a
-   transaction from a command line asks the operator first. The target gate (opt-in) also asks
-   before the first connection to an RPC host.
-5. **Fund the proof when the goal needs a live transaction.** Workers own no funds: they create a
-   wallet in their work directory, seal its keypair in the task credentials, and ask you through
-   `ask_operator` to run the exact funding command (an airdrop on devnet or testnet, a transfer
-   on mainnet-beta). They never print the key.
-6. **Read the receipts.** A finding binds the recorded exchanges in reproduction order (control
-   call, attack, verification); the report writer turns them into a Markdown report with measured
-   impact, the proof basis (executed live, executed lab, or static analysis) and a remediation.
+3. **Let the loop run.** The planner dispatches intents. Each worker maps the program: the program
+   account and upgrade authority, the IDL or the bytecode, the instructions, the accounts, the
+   PDAs, the authorities, the mints. The worker tests the constraints it finds. It proves
+   candidates with `simulateTransaction`, a Surfpool fork or a local validator first. It registers
+   instructions, accounts, authorities, mints and token accounts in the asset graph as it goes.
+4. **Approve what needs approval.** Reads and simulation run without approval. Other commands ask
+   the operator first:
 
-Skills ship with the platform and teach the method: `solana-recon` (mapping a program on a
-cluster), `anchor-audit` (white-box review of Anchor source), `solana-bytecode` (SBF analysis
-without source) and `solana-exploit` (from candidate to executed PoC), plus the generic
-`codeaudit`, `patch-diff` and `third-party-code-review`.
+   - a command that moves funds, or changes staking, voting, program or token state;
+   - a deploy or an upgrade with `anchor`;
+   - a transaction that a command line submits.
 
----
+   The target gate (opt-in) also asks before the first connection to an RPC host.
+5. **Fund the proof when the goal needs a live transaction.** Workers own no funds. A worker
+   creates a wallet in its work directory. It seals the keypair in the task credentials. It asks
+   you through `ask_operator` to run the exact funding command: an airdrop on devnet or testnet,
+   or a transfer on mainnet-beta. It never prints the key.
+6. **Read the evidence.** A finding binds the recorded exchanges in reproduction order: control
+   call, attack, verification. The report writer turns them into a Markdown report. The report has
+   a measured impact, the proof basis (executed live, executed lab, or static analysis) and a
+   remediation.
+
+Skills ship with the platform and teach the method: `solana-recon` (map a program on a cluster),
+`anchor-audit` (review Anchor source), `solana-bytecode` (analyze SBF without source) and
+`solana-exploit` (from candidate to executed proof), plus the generic `codeaudit`, `patch-diff`
+and `third-party-code-review`. [CONTEXT.md](CONTEXT.md) defines the terms the code, the prompts
+and the skills share.
+
+### Changes from ARTEX
+
+- **Asset model.** Six Solana asset types keyed by on-chain address: `program`, `instruction`,
+  `account`, `authority`, `mint`, `token_account`. Each child carries its program id.
+- **Scope.** Two scope kinds: `program` and `cluster`.
+- **Proof.** A finding on a Solana asset closes a goal through the recorded JSON-RPC exchange on
+  the RPC host of the task's cluster scope.
+- **Prompts.** The six built-in prompts are written for Solana program testing. They include the
+  money rules and the wallet funding protocol. An existing ARTEX database gets the new prompts
+  once per agent.
+- **Skills.** Four Solana skills replace the web-only skills.
+- **Approval rules.** Four built-in rules ask the operator before funds, program state, token
+  state or a raw transaction submission change.
+- **Image.** Pinned Solana CLI, Anchor, Surfpool and a Rust toolchain. No web scanners.
+- **Worker shells.** Loopback and the package registries bypass the recording proxy.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/BaaRai/ARTEX.git
-cd ARTEX
+git clone https://github.com/GuiBibeau/artex-program.git
+cd artex-program
 cp .env.example .env            # set POSTGRES_PASSWORD (and optionally an LLM key)
 docker compose up -d --build    # builds from this checkout, starts PostgreSQL
 ```
 
-Open **http://localhost:8787**. On the first visit `/setup` asks for the one-time setup token
-printed at startup:
+The image is `linux/amd64`. On an arm64 host, set the platform first:
+
+```bash
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+```
+
+Open **http://localhost:8787**. On the first visit, `/setup` asks for the one-time setup token
+that the server prints at startup:
 
 ```bash
 docker compose logs artex | grep "Setup token"
 ```
 
-> Multi-arch release images (`linux/amd64`, `linux/arm64`) are published to GitHub Container
-> Registry at `ghcr.io/baarai/artex` from the next tagged release; v0.7.0 predates the publish
-> step. For pulling the prebuilt image and all other installation paths (script, binaries,
-> source, release archives), see [Installation](#installation).
-
----
-
 ## Multi-provider workers
 
-In **System → LLM**, configure the profiles you want to use. In **System → Settings**,
-set the concurrent worker count to at least **2** before starting a task (the count
-applies to subsequently started tasks). In **System → Agents → Worker**, leave the
-model set to follow the task; a fixed Worker model takes precedence over rotation.
+A task can use more than one LLM profile. Set it up in three places.
 
-When creating a task, select both profiles in **LLM config chain**, arrange their
-order, and enable **Enable multi-LLM worker rotation**. For an existing task, open
-its LLM config control, change the switch or profile order, and save.
+1. In **System → LLM**, configure the profiles.
+2. In **System → Settings**, set the concurrent worker count to at least **2**. The count applies
+   to tasks that start later.
+3. In **System → Agents → Worker**, leave the model set to follow the task. A fixed Worker model
+   takes precedence over rotation.
 
-Rotation assigns successive worker intents A, B, A, B, regardless of completion
-order. Separate intents can run concurrently on different providers; each intent
-keeps its selected provider unless it fails over. Planner and other unbound roles
-continue using the task's current profile. Turning rotation off restores ordered
-task-level failover. An excluded provider is skipped, so an intent pinned to an
-exhausted profile falls back to the task's current profile instead of retrying it;
-rotation keeps cycling the whole list and does not rebalance around a dead provider.
-Saving the chain resets their failure state. Changes do not interrupt in-flight
-calls. The rotation cursor starts again after a server restart and saving the chain
-does not reset it; the profile order and switch remain persisted.
+When you create a task, select the profiles in **LLM config chain**, set their order, and enable
+**Enable multi-LLM worker rotation**. For an existing task, open its LLM config control, change
+the switch or the order, and save.
 
-The task creation and `PUT /api/tasks/{id}/llm` APIs accept `llm_rotate: true` alongside
-the ordered `llm_profile_ids`. Omitting `llm_rotate` on an update preserves its value.
+Rotation works like this:
+
+- It assigns successive worker intents to profile A, then B, then A, and so on. Completion order
+  does not matter.
+- Separate intents can run at the same time on different providers. Each intent keeps its
+  provider unless that provider fails over.
+- The planner and the other unbound roles use the task's current profile.
+- When rotation is off, the task uses ordered failover.
+- An excluded provider is skipped. An intent that is bound to an exhausted profile falls back to
+  the task's current profile. It does not retry the exhausted profile.
+- Rotation cycles through the whole list. It does not rebalance around a dead provider.
+- When you save the chain, the failure state of the profiles resets. Calls that run now are not
+  interrupted.
+- The rotation cursor starts again after a server restart. Saving the chain does not reset it.
+  The profile order and the switch stay saved.
+
+The task creation API and `PUT /api/tasks/{id}/llm` accept `llm_rotate: true` with the ordered
+`llm_profile_ids`. If you omit `llm_rotate` on an update, the value stays.
 
 ## Screenshots
+
+The screenshots show the interface. The **Solana programs** tab in the asset views is new and is
+not on them.
 
 | Tasks | Findings |
 | :---: | :---: |
@@ -139,7 +169,7 @@ the ordered `llm_profile_ids`. Omitting `llm_rotate` on an update preserves its 
 
 | Human-in-the-loop chat | Interception approvals |
 | :---: | :---: |
-| ![Chat](screenshots/chat.png) | ![Interception](screenshots/intercept.png) |
+| ![Chat](screenshots/chat.png) | ![Intercept](screenshots/intercept.png) |
 
 <details>
 <summary>More screenshots (assets, agents, LLM, logs)</summary>
@@ -160,20 +190,21 @@ the ordered `llm_profile_ids`. Omitting `llm_rotate` on an update preserves its 
 
 ### Dual-graph architecture: exploration graph + asset graph
 
-ARTEX separates *what the goals are* from *how far testing has progressed* into two independent
-graphs linked by anchors:
+ARTEX Program separates *what the goals are* from *how far testing has progressed*. It keeps two
+graphs and links them with anchors.
 
-- **Asset graph (shared across tasks).** One source of truth for Solana assets — `program /
-  instruction / account / authority / mint / token_account`, keyed by on-chain address and owned by
-  companies (a protocol or a team) — plus the network assets around them (`root_domain /
-  subdomain / ip / service / app / endpoint`). Parent-child relationships and deduplication keys
-  are computed by the program; agents only submit raw observations.
-- **Exploration graph (per task).** The task's reasoning and progress: `goal / intent / fact /
-  finding / hint` nodes connected by `spawns / derived_from / yields / proves` edges into a lineage
-  chain.
+- **Asset graph (shared across tasks).** One source of truth for Solana assets: `program /
+  instruction / account / authority / mint / token_account`. Each asset is keyed by its on-chain
+  address. Companies (a protocol or a team) own the assets. The network assets around a program
+  stay in the model: `root_domain / subdomain / ip / service / app / endpoint`. The program
+  computes the parent-child relationships and the deduplication keys. Agents submit raw
+  observations only.
+- **Exploration graph (per task).** The reasoning and the progress of the task: `goal / intent /
+  fact / finding / hint` nodes, connected by `spawns / derived_from / yields / proves` edges into
+  a lineage chain.
 - **Anchors link them.** `exploration_anchors(node_id, asset_id)` ties intents, facts and findings
-  to concrete assets: which assets a direction touched, and which intents tested a given asset.
-  This also powers **asset test coverage** and the coverage graph.
+  to concrete assets. It shows which assets a direction touched, and which intents tested a given
+  asset. It also powers **asset test coverage** and the coverage graph.
 
 ```mermaid
 flowchart LR
@@ -207,14 +238,14 @@ flowchart LR
   FD -. anchor .-> MI
 ```
 
-The **planner** reads the exploration graph, judges goals, and dispatches intents only when there
-is an uncovered direction; a **worker** claims one intent, executes it, writes assets/facts/findings
-back into both graphs, then stops.
+The **planner** reads the exploration graph, judges the goals, and dispatches an intent only when
+a direction is not covered yet. A **worker** claims one intent, executes it, writes assets, facts
+and findings back into both graphs, then stops.
 
 ### The engine loop
 
-The engine is event-driven: any graph change wakes the planner, workers claim and execute intents,
-write-back triggers the next round, until `prove_goal` closes the task.
+The engine is event-driven. A graph change wakes the planner. Workers claim intents and execute
+them. The write-back triggers the next round. The loop ends when `prove_goal` closes the task.
 
 ```mermaid
 sequenceDiagram
@@ -241,14 +272,15 @@ sequenceDiagram
 
 ### Durable attack chains, shared worker memory
 
-Real attack chains are multi-step and ordered (find a missing signer check → build the attack
-transaction → drain the vault on a fork → confirm on devnet). The planner keeps a **todolist retained per task across wake-ups**: it records the
-chain once, then dispatches the next step only when its prerequisites are satisfied by facts.
+A real attack chain has several steps in a fixed order. Example: find a missing signer check,
+build the attack transaction, drain the vault on a fork, confirm on devnet. The planner keeps a
+**todolist per task across wake-ups**. It records the chain once. It dispatches a step only when
+facts show that its prerequisites are satisfied.
 
-Workers can also **search each other's execution traces** (`search_all_worker_traces`,
-`list_worker_traces`, `get_worker_trace`). Observations that never became formal facts (an error
-program log line, an unchecked account, a bump that worked) are still reusable by the next worker, while each
-worker remains confined to the intent it claimed.
+Workers can also **search the execution traces of other workers** (`search_all_worker_traces`,
+`list_worker_traces`, `get_worker_trace`). An observation that never became a formal fact is still
+reusable: a program log line, an unchecked account, a bump that worked. Each worker stays confined
+to the intent it claimed.
 
 ---
 
@@ -256,162 +288,173 @@ worker remains confined to the intent it claimed.
 
 ### Evidence, not chat logs
 
-- **Recording proxy** (`:8788`) with a generated CA: every RPC call and HTTP request the agents
-  make through Bash is traced, and a JSON-RPC exchange (a `simulateTransaction` result, a sent
+- **Recording proxy** (`:8788`) with a generated CA. It traces every RPC call and HTTP request that
+  the agents make through Bash. A JSON-RPC exchange (a `simulateTransaction` result, a sent
   transaction) can be bound to a finding.
-- **Live-transaction approvals**: the built-in rules ask the operator before `solana` money,
-  staking, voting and program commands, `spl-token` state changes, `anchor deploy` / `upgrade`,
-  and any command line that calls `sendTransaction`; reads and simulation stay free.
-- **Funded-wallet protocol**: workers create test wallets in their work directory, seal the
-  keypairs in the task credentials and ask the operator for the funds; no key reaches a fact, a
-  finding or the model's context.
-- **Browser extension** (`extension/`) for the web assets around a program (a frontend, a docs
-  portal): log in once, capture the session, and the requests/responses land in the same traffic store.
+- **Live-transaction approvals.** The built-in rules ask the operator before these commands:
+  `solana` money, staking, voting and program commands; `spl-token` state changes; `anchor deploy`
+  and `anchor upgrade`; a command line that calls `sendTransaction`. Reads and simulation run
+  without approval.
+- **Funded-wallet protocol.** A worker creates test wallets in its work directory. It seals the
+  keypairs in the task credentials. It asks the operator for the funds. No key reaches a fact, a
+  finding or the context of the model.
+- **Browser extension** (`extension/`) for the web assets around a program, such as a frontend or a
+  documentation portal. Log in once and capture the session. The requests and responses land in the
+  same traffic store.
 
   <details>
   <summary>Using the traffic capture extension</summary>
 
-  - Load the unpacked extension from `extension/` (Chrome/Edge: Developer Mode → Load unpacked);
-  - In the popup, set your ARTEX URL and token, then press **Start capture** on the tab you are
-    browsing;
-  - Use the site normally; text requests/responses are batched to `POST /api/traffic/ingest`
-    (authenticated). Binary bodies (images, fonts) are skipped, bodies are truncated at 256 KiB,
-    batches are capped at 50 entries;
-  - Press **Stop** when done. Everything stays in your local traffic store.
+  - Load the unpacked extension from `extension/` (Chrome or Edge: Developer Mode → Load unpacked).
+  - In the popup, set your ARTEX Program URL and token. Then press **Start capture** on the tab that
+    you browse.
+  - Use the site. Text requests and responses go in batches to `POST /api/traffic/ingest`
+    (authenticated). Binary bodies (images, fonts) are skipped. Bodies are truncated at 256 KiB.
+    A batch holds at most 50 entries.
+  - Press **Stop** when you are done. Everything stays in your local traffic store.
 
   </details>
-- **Verified findings**: findings carry a POE level, a verification status and a note; a finding is
-  `verified` only when a bound proof/response and verbatim evidence quotes support it. Gzip/deflate
-  bodies are decoded before the quote check. The findings table supports bulk status updates, and
-  the report and export show each finding's proof strength next to its status.
-- **Traffic replay**: open a captured exchange and replay the recorded request (method, URL,
-  headers and stored body) from the traffic detail; replay stays disabled while only the body
+- **Verified findings.** A finding has a POE level, a verification status and a note. A finding is
+  `verified` only when a bound proof or response and verbatim evidence quotes support it. Gzip and
+  deflate bodies are decoded before the quote check. The findings table supports bulk status
+  updates. The report and the export show the proof strength of each finding next to its status.
+- **Traffic replay.** Open a captured exchange and replay the recorded request (method, URL,
+  headers and stored body) from the traffic detail. Replay stays disabled while only the body
   preview is loaded.
-- **Vulnerability retest loop**: a dedicated `retester` agent re-runs a finding with optional fixed
-  version/conditions, records `Still reproducible / Fixed / Cannot confirm`, and can move the
-  finding to `Fixed` automatically. Original evidence and reports are preserved.
-- **Reports and exports**: findings, evidence and task archives, with traffic snapshots kept
-  encrypted at rest.
+- **Vulnerability retest loop.** A `retester` agent runs a finding again, with optional fixed
+  versions or conditions. It records `Still reproducible`, `Fixed` or `Cannot confirm`. It can move
+  the finding to `Fixed`. The original evidence and reports are preserved.
+- **Reports and exports.** Findings, evidence and task archives. Traffic snapshots are encrypted at
+  rest.
 
 ### Control without slowing down
 
-- **Interception gate**: every tool call can require human approval, with rules by `string`,
-  `regex` or **argv prefix**. An argv rule is a JSON array of 1 to 8 tokens (Bash only, for
-  example `["git","push"]`); it matches only a single simple command whose parsed prefix equals
-  the pattern exactly. Pipes, lists, redirections, prefix assignments, subshells, background jobs,
-  wrapper programs and command/parameter substitutions do not match; flags are ignored by
-  construction (`["git","push"]` covers `git push --force`, but `git -C /repo push` matches
-  nothing). Each approval records who decided: `human`, `rule`, `model` or `system`.
-- **Scope and target gate**: scope rows define the coverage denominator; assets outside the
-  declared scope are not explored. The target gate (off by default, API-only) can refuse
+- **Interception gate.** Every tool call can require human approval. Rules match by `string`,
+  `regex` or **argv prefix**. An argv rule is a JSON array of 1 to 8 tokens (Bash only, for example
+  `["git","push"]`). It matches only a single simple command whose parsed prefix equals the
+  pattern. Pipes, lists, redirections, prefix assignments, subshells, background jobs, wrapper
+  programs and command or parameter substitutions do not match. Flags are ignored, so
+  `["git","push"]` covers `git push --force`, but `git -C /repo push` matches nothing. Each approval
+  records who decided: `human`, `rule`, `model` or `system`.
+- **Scope and target gate.** Scope rows define the coverage denominator. Assets outside the
+  declared scope are not explored. The target gate (off by default, API only) can refuse
   destinations that were not approved.
-- **Budgets**: `ARTEX_TASK_BUDGET_TOKENS` / `ARTEX_TASK_BUDGET_TURNS` cap a whole task (planner and
-  workers); `ARTEX_INTENT_BUDGET_TOKENS` / `ARTEX_INTENT_BUDGET_TURNS` cap one worker run. Near the
-  limit the task enters a forced wrap-up; a worker is not started when the remaining budget cannot
-  cover it. Spend already in `llm_usage` is restored after a restart. A task that is already inside
-  the wrap-up reserve only has that reserve left, so the revived run wraps up instead of starting
-  another worker. The per-worker cost estimate starts again from the defaults (50,000 tokens and
-  10 turns) until a worker finishes in this process.
-- **Noise governor**: `ARTEX_NOISE_PROFILE=quiet|balanced|aggressive` paces requests ARTEX sends
-  to targets (per-host rate, burst, in-flight limit, jitter, backoff on 429/503, short GET caching).
-  With a profile set, agents also receive RPC pacing limits (requests per second per RPC host, one
-  `getProgramAccounts` page or simulation batch at a time).
-- **Untrusted-output boundary (on by default)**: tool results are framed between nonce-tagged
-  markers so the model treats them as data, not instructions. Disable with
-  `ARTEX_UNTRUSTED_BOUNDARY=0`.
+- **Budgets.** `ARTEX_TASK_BUDGET_TOKENS` and `ARTEX_TASK_BUDGET_TURNS` cap a whole task (planner
+  and workers). `ARTEX_INTENT_BUDGET_TOKENS` and `ARTEX_INTENT_BUDGET_TURNS` cap one worker run.
+  Near the limit the task enters a forced wrap-up. A worker does not start when the remaining budget
+  cannot cover it. Spend that is already in `llm_usage` is restored after a restart. A task that is
+  already inside the wrap-up reserve has only that reserve left. The revived run then wraps up; it
+  does not start another worker. The cost estimate per worker starts again from the defaults
+  (50,000 tokens and 10 turns) until a worker finishes in this process.
+- **Noise governor.** `ARTEX_NOISE_PROFILE=quiet|balanced|aggressive` paces the requests that ARTEX
+  Program sends to targets: per-host rate, burst, in-flight limit, jitter, backoff on 429 and 503,
+  and a short GET cache. The agents also receive RPC pacing limits: requests per second per RPC
+  host, and one `getProgramAccounts` page or simulation batch at a time.
+- **Untrusted-output boundary (on by default).** Tool results are framed between nonce-tagged
+  markers. The model treats them as data, not as instructions. Set `ARTEX_UNTRUSTED_BOUNDARY=0` to
+  disable it.
 
 ### Assets and coverage
 
-- **Coverage ledger and force-directed coverage graph**: in-scope assets are highlighted as tested
-  or untested, with linked intents, facts and findings per node.
-- **Program-scoped asset graph**: shared across tasks, deduplicated by the program, with
-  `program → instruction / account / authority / mint / token_account` containment. A task's
-  `program` scope covers the program and everything registered under it; its `cluster` scope names
-  the RPC endpoint the evidence must come from.
-- **On-chain search**: the asset search language reaches `address`, `program_id`, `name` and
-  `chain` (`parent==<program id> AND address=<account>`).
+- **Coverage ledger and coverage graph.** In-scope assets are shown as tested or untested, with
+  the linked intents, facts and findings of each node.
+- **Program-scoped asset graph.** Shared across tasks and deduplicated by the program. Containment:
+  `program → instruction / account / authority / mint / token_account`. A `program` scope covers the
+  program and every asset registered under it. A `cluster` scope names the RPC endpoint that the
+  evidence must come from.
+- **On-chain search.** The asset search language reaches `address`, `program_id`, `name` and
+  `chain`. Example: `parent==<program id> AND address=<account>`.
 - **Task categories, templates, relations and archives** for repeatable engagements.
 
 ### Platform
 
-- **LLM profiles with failover**: Anthropic, OpenAI, OpenAI-compatible relays and keyless Ollama;
-  multiple profiles per task with automatic failover.
-- **Token accounting**: per-task and per-session usage, cache reads/writes, and an LLM record view
-  for every call.
-- **MCP servers, skills, memory and a workspace**: extend the agent with remote tools and reusable
-  prompt/playbook material.
-- **Web search**: the agent's search tool uses Brave, Tavily or the opt-in Keenable backend,
-  configured in **System → Settings** with the key encrypted at rest; search can also egress
+- **LLM profiles with failover.** Anthropic, OpenAI, OpenAI-compatible relays and keyless Ollama.
+  A task can use several profiles, with automatic failover.
+- **Token accounting.** Usage per task and per session, cache reads and writes, and an LLM record
+  view for every call.
+- **MCP servers, skills, memory and a workspace.** Extend the agents with remote tools and reusable
+  material.
+- **Web search.** The search tool of the agent uses Brave, Tavily or the opt-in Keenable backend.
+  Configure it in **System → Settings**. The key is encrypted at rest. Search can also egress
   through its own proxy.
-- **Single binary**: the Next.js UI is embedded with `go:embed`; PostgreSQL is the only external
+- **Single binary.** The Next.js UI is embedded with `go:embed`. PostgreSQL is the only external
   dependency.
 
 ---
 
 ## Installation
 
-> Requires **PostgreSQL**; exploration requires an **LLM** (`ANTHROPIC_API_KEY` or
-> `OPENAI_API_KEY`, also configurable in the UI).
+Requirements: **PostgreSQL** 16 or later. Exploration requires an **LLM**: `ANTHROPIC_API_KEY` or
+`OPENAI_API_KEY`, or a provider that you configure in the UI.
 
-### Option 1: one-click install script (recommended)
+### Option 1: install script
 
 ```bash
-git clone https://github.com/BaaRai/ARTEX.git
-cd ARTEX
+git clone https://github.com/GuiBibeau/artex-program.git
+cd artex-program
 ./install.sh
 ```
 
-The script detects or installs Docker, then offers **① all-Docker** (writes `.env`, runs
-`docker compose up -d --build`) or **② local build and run** (generates `config.json`, builds the
-embedded binary, starts it).
+The script detects or installs Docker. It then offers two modes:
 
-Open **http://localhost:8787**; `/setup` asks for the one-time setup token printed at startup
-(`docker compose logs artex | grep "Setup token"`).
+- **① all-Docker**: it writes `.env` and runs `docker compose up -d --build`.
+- **② local build and run**: it generates `config.json`, builds the embedded binary, and starts it.
 
-The UI listens on `127.0.0.1` by default. To reach it from another machine (or from Windows when
-ARTEX runs inside WSL), set `ARTEX_BIND_ADDR=0.0.0.0` in `.env` (the setup token still protects the
-first-run claim), or keep loopback and use a reverse proxy or SSH tunnel.
+Open **http://localhost:8787**. `/setup` asks for the one-time setup token that the server prints
+at startup (`docker compose logs artex | grep "Setup token"`).
 
-### Option 2: Docker (Compose checkout build or prebuilt GHCR image)
+The UI listens on `127.0.0.1` by default. To reach it from another machine, or from Windows when
+ARTEX Program runs inside WSL, set `ARTEX_BIND_ADDR=0.0.0.0` in `.env`. The setup token still
+protects the first-run claim. You can also keep loopback and use a reverse proxy or an SSH tunnel.
+
+### Option 2: Docker
 
 Build from a checkout with Docker Compose:
 
 ```bash
-git clone https://github.com/BaaRai/ARTEX.git
-cd ARTEX
+git clone https://github.com/GuiBibeau/artex-program.git
+cd artex-program
 cp .env.example .env            # set POSTGRES_PASSWORD, optionally ANTHROPIC_API_KEY
-docker compose up -d --build
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose up -d --build
 # → http://localhost:8787
 ```
 
-The checkout build needs the Docker **buildx** plugin (BuildKit). Docker Desktop and
-get.docker.com include it; distro packages and Homebrew's docker CLI (Colima) may not. If
-`docker buildx version` fails, install `docker-buildx-plugin` or `docker-buildx`, or on macOS
-`brew install docker-buildx`. Without it the build stops at the first stage with
+`DOCKER_DEFAULT_PLATFORM` is necessary on an arm64 host only.
+
+The checkout build needs the Docker **buildx** plugin (BuildKit). Docker Desktop and get.docker.com
+include it. Distro packages and the Homebrew docker CLI (Colima) may not include it. If
+`docker buildx version` fails, install `docker-buildx-plugin` or `docker-buildx`. On macOS, run
+`brew install docker-buildx`. Without buildx, the build stops at the first stage with
 `failed to parse platform`.
 
-> **ARTEX Program has no published image.** `ghcr.io/baarai/artex` is the upstream ARTEX image
-> (web-oriented, without the Solana toolchain). Build from this checkout with
-> `docker compose up -d --build`; the instructions below apply once an image of this fork is
-> published. This image is `linux/amd64` only (see the note above).
+The image contains:
 
-The release workflow publishes a multi-arch image (`linux/amd64`, `linux/arm64`) to GitHub
-Container Registry on each `v*` tag, with tags `:latest`, `:v<version>`, and `:<version>`.
-v0.7.0 predates that step, so there is no `artex` package yet: until the next tagged release,
-use the checkout build above, and `docker-compose.ghcr.yml` and the `docker pull` below will
-fail with `denied`. GHCR packages start private; after the first publish the package visibility
-must be set to Public, and the release workflow verifies that the image pulls anonymously and
-fails the job otherwise.
+- the Solana toolchain: `solana`, `solana-keygen`, `spl-token`, `solana-test-validator`,
+  `cargo-build-sbf`, `anchor`, `surfpool`;
+- a Rust toolchain;
+- Node 22 for scripts;
+- the built-in skills in `/app/skills`.
 
-Once the image is published, the standalone container requires an existing PostgreSQL database
-reachable from the container.
-Set the `ARTEX_PG_*` variables below. The example uses Docker Desktop's
-`host.docker.internal` to reach PostgreSQL on the host. On native Linux Docker Engine, add
-`--add-host=host.docker.internal:host-gateway` to `docker run` for a host database, or use
-the reachable hostname of your database server.
+The image is `linux/amd64` only. The Solana CLI, Anchor and Surfpool publish no Linux arm64
+binaries.
+
+#### Prebuilt image
+
+The release workflow publishes an image to GitHub Container Registry on each `v*` tag, with the
+tags `:latest`, `:v<version>` and `:<version>`. The image is `linux/amd64`.
+
+> **No release is published yet.** Until the first `v*` tag of this repository exists, build from
+> the checkout as shown above. `docker-compose.ghcr.yml` and the `docker pull` commands below fail
+> with `denied` until then. After the first publish, set the package visibility to Public. The
+  release workflow checks that the image pulls anonymously, and fails the job if it does not.
+
+The standalone container needs a PostgreSQL database that it can reach. Set the `ARTEX_PG_*`
+variables. The example uses `host.docker.internal` of Docker Desktop to reach PostgreSQL on the
+host. On native Linux Docker Engine, add `--add-host=host.docker.internal:host-gateway` to
+`docker run` for a host database. Or use the hostname of your database server.
 
 ```bash
-docker pull ghcr.io/baarai/artex:latest
+docker pull ghcr.io/guibibeau/artex-program:latest
 
 mkdir -p data keys
 docker run -d --name artex \
@@ -427,32 +470,27 @@ docker run -d --name artex \
   -e ARTEX_JWT_KEY_DIR=/app/keys \
   -v "$PWD/data:/app/data" \
   -v "$PWD/keys:/app/keys" \
-  ghcr.io/baarai/artex:latest
+  ghcr.io/guibibeau/artex-program:latest
 # → http://localhost:8787  (docker logs artex | grep "Setup token")
 ```
 
-In `docker-compose.yml` and `docker-compose.ghcr.yml`, `POSTGRES_PASSWORD` is passed to ARTEX as
-its own variable. The server percent-encodes it into the connection URL, so a password may contain
-`/`, `?`, `%`, `@`, `:` or spaces. In `.env`, quote a value that contains `#`, and write `$$` for a
-literal `$`. The `ARTEX_PG_*` variables take the password raw; quote it in a shell.
+In `docker-compose.yml` and `docker-compose.ghcr.yml`, `POSTGRES_PASSWORD` is passed to ARTEX
+Program as its own variable. The server percent-encodes it into the connection URL. A password can
+contain `/`, `?`, `%`, `@`, `:` or spaces. In `.env`, quote a value that contains `#`, and write
+`$$` for a literal `$`. The `ARTEX_PG_*` variables take the password raw. Quote it in a shell.
 
-The image includes a Solana toolchain (`solana`, `solana-keygen`, `spl-token`,
-`solana-test-validator`, `cargo-build-sbf`, `anchor`, `surfpool`), a Rust toolchain, Node 22 for
-scripts, and built-in `/app/skills`. It is built for `linux/amd64`: the Solana CLI, Anchor and
-Surfpool publish no Linux arm64 binaries, so on an arm64 host set
-`DOCKER_DEFAULT_PLATFORM=linux/amd64`. The GHCR Compose file below persists `./keys` and `./data`;
-it does not mount a host `skills/` directory, so the image's built-in skills are used.
+The GHCR Compose file persists `./keys` and `./data`. It does not mount a host `skills/` directory,
+so the image uses its built-in skills.
 
 #### Compose stack from the prebuilt image
 
-`docker-compose.ghcr.yml` runs the same ARTEX + PostgreSQL stack from the released image, with no
-checkout build. The image is not published yet: v0.7.0 predates the GHCR publish step, so use the
-checkout build above until the next tagged release. Once the first image is published, download
-the file and `.env.example` once:
+`docker-compose.ghcr.yml` runs the same stack (ARTEX Program and PostgreSQL) from the released
+image, with no checkout build. It works after the first image is published. Download the file and
+`.env.example` once:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/BaaRai/ARTEX/main/docker-compose.ghcr.yml
-curl -fsSLO https://raw.githubusercontent.com/BaaRai/ARTEX/main/.env.example
+curl -fsSLO https://raw.githubusercontent.com/GuiBibeau/artex-program/main/docker-compose.ghcr.yml
+curl -fsSLO https://raw.githubusercontent.com/GuiBibeau/artex-program/main/.env.example
 cp .env.example .env            # set POSTGRES_PASSWORD, optionally an LLM key
 docker compose -f docker-compose.ghcr.yml pull
 docker compose -f docker-compose.ghcr.yml up -d
@@ -466,37 +504,38 @@ docker compose -f docker-compose.ghcr.yml pull
 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
-Pin a version with `ARTEX_IMAGE_TAG=v0.7.1` in `.env` (or `0.7.1`); unset uses `latest`. To use
-custom skills, copy them into a host directory and add `- ./skills:/app/skills` to the `artex`
-volumes, which overrides the built-in `/app/skills`.
+Pin a version with `ARTEX_IMAGE_TAG=v0.7.1` in `.env` (or `0.7.1`). If the variable is not set,
+`latest` is used. To use custom skills, copy them into a host directory and add
+`- ./skills:/app/skills` to the `artex` volumes. The mount then replaces the built-in
+`/app/skills`.
 
-For remote MCP you can choose `http` (Streamable HTTP) or `sse` (legacy SSE) in system settings.
-Legacy SSE servers usually establish the event stream with `GET /sse` and receive JSON-RPC over
-`/message?sessionId=...`; configure the URL as `/sse` and send `Authorization: Bearer <token>`.
+For a remote MCP server, you can choose `http` (Streamable HTTP) or `sse` (legacy SSE) in the system
+settings. A legacy SSE server usually opens the event stream with `GET /sse` and receives JSON-RPC
+over `/message?sessionId=...`. Configure the URL as `/sse`, and send `Authorization: Bearer <token>`.
 
-### Option 3: prebuilt binaries (Releases)
+### Option 3: prebuilt binaries
 
-Download the zip for your platform from [Releases](https://github.com/BaaRai/ARTEX/releases). It
-contains `artex`, `start.sh` (`start.bat` on Windows), `skills/` and `config.example.json`:
+Each release on the [Releases page](https://github.com/GuiBibeau/artex-program/releases) has a zip
+for each platform. No release is published yet. A zip contains `artex`, `start.sh` (`start.bat` on
+Windows), `skills/` and `config.example.json`:
 
 ```bash
 cp config.example.json config.json   # fill in the database connection
 ./start.sh                           # → http://localhost:8787
 ```
 
-Start with `start.sh` / `start.bat`, not `./artex`: it is a daemon script that restarts the process
-after a backoff. To keep it in the background: `nohup ./start.sh >artex.log 2>&1 &`.
+Start with `start.sh` or `start.bat`, not with `./artex`. The script is a daemon script that
+restarts the process after a backoff. To keep it in the background: `nohup ./start.sh >artex.log 2>&1 &`.
 
 #### Verifying a release
 
-Each release attaches `SHA256SUMS` and a CycloneDX SBOM, `artex-<tag>.cdx.json` (Go modules in the
-linux/amd64 binary, the frontend `package-lock.json`, `go.mod`/`go.sum`), next to the zips. The zips
-also carry a GitHub build provenance attestation. Releases published before this was added have
-neither.
+Each release attaches `SHA256SUMS` and a CycloneDX SBOM, `artex-<tag>.cdx.json`, next to the zips.
+The SBOM lists the Go modules in the linux/amd64 binary, the frontend `package-lock.json`, `go.mod`
+and `go.sum`. The zips also carry a GitHub build provenance attestation.
 
 ```bash
-sha256sum -c SHA256SUMS                           # add --ignore-missing if you downloaded only some zips
-gh attestation verify <zip> --repo BaaRai/ARTEX   # built by this repository's release workflow
+sha256sum -c SHA256SUMS                                    # add --ignore-missing if you downloaded only some zips
+gh attestation verify <zip> --repo GuiBibeau/artex-program   # built by the release workflow of this repository
 ```
 
 ### Option 4: build the single binary from source
@@ -510,10 +549,10 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 
 Only `-tags embedui` embeds the frontend into the binary.
 
-### Option 5: cross-platform release archives
+### Option 5: release archives
 
-`build.sh` builds and embeds the frontend, strips debug info, and writes zips for Linux
-amd64/arm64, macOS amd64/arm64 and Windows amd64 by default:
+`build.sh` builds and embeds the frontend, strips debug info, and writes zips for Linux amd64 and
+arm64, macOS amd64 and arm64, and Windows amd64:
 
 ```bash
 ./build.sh --release
@@ -523,15 +562,16 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 ./build.sh --target linux/amd64 --upx
 ```
 
-UPX is disabled by default: self-extracting binaries may be incompatible with some kernels,
-virtualization environments or security policies. Pass `--upx` only after confirming the target
-runtime supports it.
+UPX is off by default. Self-extracting binaries can be incompatible with some kernels,
+virtualization environments or security policies. Pass `--upx` only after you confirm that the
+target runtime supports it.
 
 ---
 
 ## Configuration
 
-**Database** (`config.json`, `ARTEX_PG_DSN`, or `ARTEX_PG_*` environment variables — see [External PostgreSQL](#external-postgresql)):
+**Database**: `config.json`, `ARTEX_PG_DSN`, or the `ARTEX_PG_*` environment variables. See
+[External PostgreSQL](#external-postgresql).
 
 ```json
 {
@@ -543,134 +583,151 @@ runtime supports it.
 }
 ```
 
-**LLM**: `export ANTHROPIC_API_KEY=sk-...` (or `OPENAI_API_KEY`), or configure it in the UI's
-"LLM Configuration" page, which can also add a local Ollama server as a keyless provider (format
-"Ollama", default base URL `http://127.0.0.1:11434/v1`). Optional:
-`ARTEX_LLM_PROVIDER` (`anthropic | openai | openai-responses | ollama | bedrock-gateway`), `ARTEX_LLM_MODEL`,
-`ARTEX_LLM_BASE_URL`, `ARTEX_LLM_PROXY`.
+**LLM**: run `export ANTHROPIC_API_KEY=sk-...` (or `OPENAI_API_KEY`), or configure a provider on
+the **LLM Configuration** page of the UI. The page can also add a local Ollama server as a keyless
+provider (format "Ollama", default base URL `http://127.0.0.1:11434/v1`). Optional variables:
+`ARTEX_LLM_PROVIDER` (`anthropic | openai | openai-responses | ollama | bedrock-gateway`),
+`ARTEX_LLM_MODEL`, `ARTEX_LLM_BASE_URL`, `ARTEX_LLM_PROXY`.
 
-**Base URL gotcha**: for the Anthropic format, enter the host **without** `/v1` (for example
-`https://api.anthropic.com`); ARTEX appends `/v1/messages`. OpenAI-format providers append
-`/chat/completions` (or `/responses` for `openai-responses`), so their base **does** end in `/v1`
-(for example `https://api.openai.com/v1`).
+**Base URL rule.** For the Anthropic format, enter the host **without** `/v1`, for example
+`https://api.anthropic.com`. ARTEX Program appends `/v1/messages`. OpenAI-format providers append
+`/chat/completions` (or `/responses` for `openai-responses`). Their base URL **ends in** `/v1`, for
+example `https://api.openai.com/v1`.
 
-**OpenAI-compatible gateways**: any provider that serves an OpenAI-style
-`/v1/chat/completions` endpoint works through the **OpenAI** format — no dedicated format
-needed. Create a profile with format **OpenAI**, set **Base URL** to the gateway's `/v1`
-root, paste the key, then click the **↻** button next to *Model* to load the provider's
-catalog (`GET /v1/models`) and pick a model; models the provider adds later appear on the
-next refresh. For example, [NotHoly](https://notholy.com) (offensive-security models) uses
-base URL `https://api.notholy.com/v1` with an API key from its console.
+**OpenAI-compatible gateways.** A provider that serves an OpenAI-style `/v1/chat/completions`
+endpoint works through the **OpenAI** format. No dedicated format is necessary.
 
-**Bedrock gateway**: select **Bedrock gateway** in System → LLM for a gateway that
-exposes the Bedrock `InvokeModel` and `InvokeModelWithResponseStream` paths and accepts
-bearer-token authentication. Enter the gateway's base URL (for example,
-`https://gateway.example.com/bedrock`), the full Bedrock model ID, and the token
-in **Bearer token**. If required, enter static headers as one `Name: Value` per line
-in **Custom gateway headers**. ARTEX adds `/model/{model}/invoke` (or
-`/invoke-with-response-stream`), sends `anthropic_version: bedrock-2023-05-31`,
-and decodes Bedrock's binary event stream. Enter the model ID manually; this
-gateway format does not have a model-list operation. The token and custom header
-values are encrypted in the database and are write-only in the UI. Editing the
-gateway URL requires re-entering the token, so saved credentials cannot be sent
-to a different host by changing the URL. This format is for bearer-authenticated
-gateways; direct AWS Bedrock with SigV4 credentials is not supported.
+1. Create a profile with format **OpenAI**.
+2. Set **Base URL** to the `/v1` root of the gateway.
+3. Paste the key.
+4. Click the **↻** button next to *Model* to load the catalog of the provider (`GET /v1/models`),
+   then pick a model. Models that the provider adds later appear on the next refresh.
 
-For environment-based setup, set `ARTEX_LLM_PROVIDER=bedrock-gateway`,
-`ARTEX_LLM_BASE_URL`, `ARTEX_LLM_MODEL`, and `ARTEX_LLM_API_KEY`. Optional
-`ARTEX_LLM_CUSTOM_HEADERS` uses the same newline-separated `Name: Value` format.
+**Bedrock gateway.** Select **Bedrock gateway** in System → LLM for a gateway that exposes the
+Bedrock `InvokeModel` and `InvokeModelWithResponseStream` paths and accepts bearer-token
+authentication.
 
-**Task archive storage**: local disk by default. Set `ARTEX_ARCHIVE_STORAGE=s3` to
-store cold task packages in an S3-compatible bucket and release their local
-package space after verification. Existing local archives remain usable. See
-[Task archive storage](docs/task-archive-storage.md) for configuration, permissions,
-integrity checks, temporary disk requirements and recovery.
+- Enter the base URL of the gateway (for example, `https://gateway.example.com/bedrock`), the full
+  Bedrock model ID, and the token in **Bearer token**.
+- If required, enter static headers as one `Name: Value` per line in **Custom gateway headers**.
+- ARTEX Program adds `/model/{model}/invoke` (or `/invoke-with-response-stream`), sends
+  `anthropic_version: bedrock-2023-05-31`, and decodes the binary event stream of Bedrock.
+- Enter the model ID manually. This gateway format has no model-list operation.
+- The token and the custom header values are encrypted in the database. They are write-only in the
+  UI. When you edit the gateway URL, you must enter the token again. A saved credential can
+  therefore not be sent to a different host by a URL change.
+- This format is for bearer-authenticated gateways. Direct AWS Bedrock with SigV4 credentials is not
+  supported.
 
-**Concurrency**: work agents per task, in "System Settings" (default 3).
+For an environment-based setup, set `ARTEX_LLM_PROVIDER=bedrock-gateway`, `ARTEX_LLM_BASE_URL`,
+`ARTEX_LLM_MODEL` and `ARTEX_LLM_API_KEY`. The optional `ARTEX_LLM_CUSTOM_HEADERS` uses the same
+newline-separated `Name: Value` format.
 
-**Untrusted-output boundary (on by default)**: tool results for the worker, planner, chat and main
-agent are framed between nonce-tagged markers so the model treats them as data, not instructions.
-Unset or empty, the boundary is on; set `ARTEX_UNTRUSTED_BOUNDARY=0` (or `false` / `off` / `no`) to
-disable it. Cost: about 154 bytes per tool result plus one system note.
+**Task archive storage**: local disk by default. Set `ARTEX_ARCHIVE_STORAGE=s3` to store cold task
+packages in an S3-compatible bucket. The local package space is released after verification.
+Existing local archives stay usable. See [Task archive storage](docs/task-archive-storage.md) for
+the configuration, permissions, integrity checks, temporary disk requirements and recovery.
 
-**Noise profile (off by default)**: `ARTEX_NOISE_PROFILE` paces the requests ARTEX sends to targets
-(WebFetch, HTTP custom tools, the enrich probe). Unset or `off` keeps today's behaviour: no limit,
-no cache. `quiet` = 2 req/s per host (burst 4, 1 in flight), `balanced` = 5 req/s (burst 10, 2 in
-flight), `aggressive` = 20 req/s (burst 40, 4 in flight). A profile adds jitter, backs off on
-429/503 (honours `Retry-After`, bounded retries, GET/HEAD/OPTIONS only), deduplicates identical
-in-flight GETs and caches them briefly (60/30/10 s; never POST/PUT/PATCH/DELETE), and logs a
-per-host noise line each minute. `ARTEX_TARGET_USER_AGENT` sets a User-Agent on target requests
-that carry none. With traffic capture on, Bash commands that use the proxy (curl, wget,
-python-requests) are paced too, per host by the same rate and jitter, and counted in the same
-per-host lines. The in-flight caps, retries and cache apply only to ARTEX's own requests. This is
-best effort, not a security boundary. Raw scanners such as nmap are not paced, and neither is a
-command that bypasses the proxy (`--noproxy`, a removed proxy variable). With capture off,
-nothing launched from Bash is paced. The low-and-slow prompt block supplies the rate flags in
-every case.
-The **Target noise** card in System settings sets the profile at runtime (no restart) and shows the
-per-host counters; once saved, that setting takes precedence over `ARTEX_NOISE_PROFILE`.
+**Concurrency**: the number of workers per task, in **System Settings** (default 3).
 
-**Scanner User-Agent (opt-in per task)** adds a stable ARTEX User-Agent to supported
-target requests so defenders can correlate them with an approved assessment. See the
+**Untrusted-output boundary (on by default)**: the tool results for the worker, the planner, the
+chat and the main agent are framed between nonce-tagged markers. The model treats them as data, not
+as instructions. If the variable is unset or empty, the boundary is on. Set
+`ARTEX_UNTRUSTED_BOUNDARY=0` (or `false`, `off`, `no`) to disable it. Cost: about 154 bytes per tool
+result, plus one system note.
+
+**Noise profile (off by default)**: `ARTEX_NOISE_PROFILE` paces the requests that ARTEX Program
+sends to targets (WebFetch, HTTP custom tools, the enrich probe). If the variable is unset or `off`,
+there is no limit and no cache.
+
+- `quiet` = 2 requests per second per host (burst 4, 1 in flight).
+- `balanced` = 5 requests per second per host (burst 10, 2 in flight).
+- `aggressive` = 20 requests per second per host (burst 40, 4 in flight).
+
+A profile adds jitter. It backs off on 429 and 503: it honors `Retry-After`, bounds the retries, and
+applies to GET, HEAD and OPTIONS only. It deduplicates identical GETs that are in flight. It caches
+them for a short time (60, 30 or 10 seconds), and never caches POST, PUT, PATCH or DELETE. It logs
+one noise line per host each minute. `ARTEX_TARGET_USER_AGENT` sets a User-Agent on target requests that carry
+none. With traffic capture on, the proxy also paces the Bash commands that use it (curl, wget,
+python-requests). They get the same rate and jitter per host, and the same per-host log lines.
+The in-flight caps, the retries and the cache apply only to the requests of ARTEX Program. The
+profile reduces noise. It is not a security boundary. A command that bypasses the proxy
+(`--noproxy`, or a removed proxy variable) is not paced. With capture off, nothing that starts from Bash is paced.
+
+The **Target noise** card in the system settings sets the profile at run time, with no restart. It
+shows the per-host counters. After you save it, that setting takes precedence over
+`ARTEX_NOISE_PROFILE`.
+
+**Scanner User-Agent (opt-in per task)** adds a stable ARTEX User-Agent to supported target
+requests. Defenders can then correlate the requests with an approved assessment. See the
 [configuration and WAF triage guide](docs/scanner-user-agent.md).
 
-**Low-and-slow agent guidance (off by default)**: when a noise profile is set, the planner, worker,
-main agent and chat agents receive a code-owned prompt block with the profile's per-host limits and
-exact rate/delay flags for the installed scanners. It tells them to test one host at a time, back
-off on 429/503 and never raise the rate to meet a deadline.
+**Agent rate guidance (off by default)**: with a noise profile set, each agent that can run commands
+receives a prompt block. The block holds the profile limits. It tells
+the agents to work on one host at a time. It tells them to back off on 429 and 503, and never to
+raise the rate to meet a deadline.
 
-**Run budgets (off by default)**: `ARTEX_TASK_BUDGET_TOKENS` / `ARTEX_TASK_BUDGET_TURNS` cap a
-task's total spend (planner rounds and workers); `ARTEX_INTENT_BUDGET_TOKENS` /
-`ARTEX_INTENT_BUDGET_TURNS` cap one worker run. Unset or `0` means unlimited. A worker is not
-started when the remaining task budget cannot cover its estimated cost (the average of finished
-workers, else 50,000 tokens and 10 turns). Near the wrap-up reserve (the larger of 5% and 20,000
-tokens, and 2 turns) the task enters a forced wrap-up: the planner writes a summary and final goal
-judgment, and workers may only write back. The task then ends `done` if its goals are met, else
-`timeout`. Practical floor: below 50,000 tokens no worker starts; 50,000-70,000 typically gives one
-worker then wrap-up; pick well above 70,000 for real exploration. Planner, worker, judge, and
-compactor rows in `llm_usage` are counted back into the cap when a ledger is created, including
-after a restart and after a revived run drops its ledger. A restored task already inside the
-wrap-up reserve does not get another worker: only that reserve remains, and the run wraps up.
-Chat, goal decomposition, and side questions are stored on the same task and are not counted.
-The per-worker average is not restored (usage rows have no run boundary), so the estimate starts
-from the defaults until a worker finishes in this process.
+**Run budgets (off by default)**: `ARTEX_TASK_BUDGET_TOKENS` and `ARTEX_TASK_BUDGET_TURNS` cap the
+total spend of a task (planner rounds and workers). `ARTEX_INTENT_BUDGET_TOKENS` and
+`ARTEX_INTENT_BUDGET_TURNS` cap one worker run. Unset or `0` means unlimited.
 
-**Common flags**: `./start.sh -addr :8787 -proxy :8788` (`-addr` frontend/API, `-proxy` traffic
-recording proxy).
+- A worker does not start when the remaining task budget cannot cover its estimated cost. The
+  estimate is the average of the finished workers. Without a finished worker, it is 50,000 tokens
+  and 10 turns.
+- Near the wrap-up reserve (the larger of 5% and 20,000 tokens, and 2 turns), the task enters a
+  forced wrap-up. The planner writes a summary and a final goal judgment. Workers can only write
+  back. The task then ends `done` if its goals are met, else `timeout`.
+- Practical floor: below 50,000 tokens, no worker starts. 50,000 to 70,000 gives one worker, then
+  wrap-up. Choose a value well above 70,000 for real exploration.
+- **The token budget counts every token of every request, with the full context of the turn.** A
+  worker context of 80,000 tokens costs 80,000 budget tokens for each turn. This is also true when
+  the provider read most of the context from its cache. A worker run of 30 turns then costs about
+  2.4 million budget tokens. Size `ARTEX_INTENT_BUDGET_TOKENS` as `turns × context`. Size the task
+  budget as the sum over the worker runs that you expect. In a review of two programs, one worker
+  context reached 90,000 tokens. 89% of the input tokens were cache reads.
+- Planner, worker, judge and compactor rows in `llm_usage` are counted back into the cap when a
+  ledger is created. This includes a restart and a revived run. A restored task that is already in
+  the wrap-up reserve gets no other worker: only that reserve remains, and the run wraps up.
+- Chat, goal decomposition and side questions are stored on the same task and are not counted.
+- The average per worker is not restored (usage rows have no run boundary). The estimate starts
+  from the defaults until a worker finishes in this process.
+
+**Common flags**: `./start.sh -addr :8787 -proxy :8788`. `-addr` is the frontend and API address.
+`-proxy` is the traffic recording proxy address.
 
 ### External PostgreSQL
 
-ARTEX already supports an external PostgreSQL 16+ instance — the `postgres` service in
-`docker-compose.yml` is only the bundled default. Because the database is startup configuration and
-the system's single source of truth, there is no runtime database switcher in the UI: change the
-environment variables and restart the server to point at another instance.
+ARTEX Program supports an external PostgreSQL 16 or later instance. The `postgres` service in
+`docker-compose.yml` is only the bundled default. The database is startup configuration and the
+single source of truth of the system. The UI has no database switcher. To use another instance,
+change the environment variables and restart the server.
 
-Configure the connection with either a full connection string or individual parts:
+Configure the connection with a full connection string or with individual parts:
 
-- **`ARTEX_PG_DSN`**: full PostgreSQL connection URL (for example
-  `postgres://artex:pass@db.example.internal:5432/artex?sslmode=require`). When set, it takes
-  precedence over the `ARTEX_PG_*` variables and you are responsible for percent-encoding any
-  URL-special characters in the username or password.
-- **`ARTEX_PG_*` parts** (recommended when passwords contain `/`, `?`, `%`, `@`, `:`, or spaces —
-  ARTEX percent-encodes the user and password and removes `ARTEX_PG_PASSWORD` from the environment
-  at startup):
-  - `ARTEX_PG_HOST` — PostgreSQL host
-  - `ARTEX_PG_PORT` — PostgreSQL port (default `5432`)
-  - `ARTEX_PG_USER` — database user
-  - `ARTEX_PG_PASSWORD` — database password (raw, not URL-encoded)
-  - `ARTEX_PG_DBNAME` — database name
-  - `ARTEX_PG_SSLMODE` — TLS mode (`disable`, `require`, `verify-ca`, `verify-full`)
+- **`ARTEX_PG_DSN`**: a full PostgreSQL connection URL, for example
+  `postgres://artex:pass@db.example.internal:5432/artex?sslmode=require`. When it is set, it takes
+  precedence over the `ARTEX_PG_*` variables. You must percent-encode URL-special characters in the
+  username and the password.
+- **`ARTEX_PG_*` parts** (recommended when a password contains `/`, `?`, `%`, `@`, `:` or spaces).
+  ARTEX Program percent-encodes the user and the password, and removes `ARTEX_PG_PASSWORD` from the
+  environment at startup:
+  - `ARTEX_PG_HOST`: the PostgreSQL host.
+  - `ARTEX_PG_PORT`: the PostgreSQL port (default `5432`).
+  - `ARTEX_PG_USER`: the database user.
+  - `ARTEX_PG_PASSWORD`: the database password (raw, not URL-encoded).
+  - `ARTEX_PG_DBNAME`: the database name.
+  - `ARTEX_PG_SSLMODE`: the TLS mode (`disable`, `require`, `verify-ca`, `verify-full`).
 
 #### Compose without the bundled `postgres` service
 
-To run ARTEX against an external PostgreSQL server with Docker Compose, remove the `postgres`
-service, the `depends_on` block, and the `pgdata` volume from `docker-compose.yml`, and point
-`artex` at your database:
+To run against an external PostgreSQL server with Docker Compose, remove the `postgres` service,
+the `depends_on` block and the `pgdata` volume from `docker-compose.yml`. Then point `artex` at
+your database:
 
 ```yaml
 services:
   artex:
-    image: ghcr.io/baarai/artex:latest
+    image: ghcr.io/guibibeau/artex-program:latest
     security_opt:
       - "no-new-privileges:true"
     environment:
@@ -695,23 +752,29 @@ services:
 
 #### Local disk usage (`data/`)
 
-Moving PostgreSQL to an external host does **not** move the runtime `data/` directory off local
-disk. `data/` still stores spilled HTTP/TCP traffic blobs (`data/traffic/_blobs`), LLM
-transcripts, task working files, and local task archives, so heavy workloads can still fill the
-host disk if `data/` is on a small volume. Mount `data/` on a suitably sized volume, and consider
-setting `ARTEX_ARCHIVE_STORAGE=s3` (see [Task archive storage](docs/task-archive-storage.md)) to
-offload cold task archives to object storage.
+An external PostgreSQL does **not** move the runtime `data/` directory off local disk. `data/` still
+stores these items:
 
-### Reverse proxy deployment (HTTPS / exposing only 443)
+- spilled HTTP and TCP traffic blobs (`data/traffic/_blobs`);
+- LLM transcripts;
+- task working files;
+- local task archives.
 
-The frontend, API and SSE stream share port 8787 (the binary listens on `127.0.0.1:8787` by
-default; the Docker container publishes on `127.0.0.1`), and the activity stream is same-origin by
-default, so **no `NEXT_PUBLIC_SSE_BASE` is needed**: expose 443 and keep 8787 internal.
+A heavy workload can fill the host disk when `data/` is on a small volume. Mount `data/` on a volume
+of the necessary size. You can also set `ARTEX_ARCHIVE_STORAGE=s3` to move cold task archives to
+object storage. See [Task archive storage](docs/task-archive-storage.md).
 
-SSE keeps a long-lived connection with continuous pushes, so the proxy **must disable buffering**;
-otherwise the browser connects but never receives events.
+### Reverse proxy deployment (HTTPS, port 443 only)
 
-Redirect plain HTTP first, so a bookmarked `http://` URL never reaches the app unencrypted:
+The frontend, the API and the SSE stream share port 8787. The binary listens on `127.0.0.1:8787` by
+default, and the Docker container publishes on `127.0.0.1`. The activity stream is same-origin by
+default, so **`NEXT_PUBLIC_SSE_BASE` is not necessary**. Expose port 443 and keep 8787 internal.
+
+SSE keeps a long-lived connection with continuous pushes. The proxy **must disable buffering**.
+Without that, the browser connects but receives no events.
+
+Redirect plain HTTP first. A bookmarked `http://` URL then never reaches the app without
+encryption:
 
 ```nginx
 server {
@@ -749,62 +812,64 @@ server {
 }
 ```
 
-**Login rate limit behind a proxy**: login allows 10 attempts per minute per client IP. Behind a
-proxy every request comes from the proxy's address, so without further setup all users share one
-budget and an attacker who fails 10 logins blocks everyone, admin included, for up to 15 minutes.
-Keep the `X-Forwarded-For` line and set `ARTEX_TRUSTED_PROXIES` (comma-separated CIDRs, empty by
-default) to the address ARTEX sees the proxy connect from:
+**Login rate limit behind a proxy.** Login allows 10 attempts per minute per client IP. Behind a
+proxy, each request comes from the address of the proxy. Without more setup, all users share one
+budget. An attacker who fails 10 logins blocks everybody, the admin included, for up to 15 minutes.
+Keep the `X-Forwarded-For` line. Set `ARTEX_TRUSTED_PROXIES` (comma-separated CIDRs, empty by
+default) to the address that ARTEX Program sees the proxy connect from:
 
-- **nginx and ARTEX both on the host** (binary, `./start.sh`): the peer is `127.0.0.1`; start ARTEX
-  with `ARTEX_TRUSTED_PROXIES=127.0.0.1/32`.
-- **nginx on the host, ARTEX in Docker** (`docker-compose.yml`): the connection reaches the
-  container from the Docker bridge gateway (a `172.x` address), not from `127.0.0.1`. Find it with
-  `docker network inspect artex_default --format '{{(index .IPAM.Config 0).Gateway}}'` (the network
-  is `<project directory>_default`), put `ARTEX_TRUSTED_PROXIES=<gateway>/32` in `.env`, then
-  `docker compose up -d`.
+- **nginx and ARTEX Program both on the host** (binary, `./start.sh`): the peer is `127.0.0.1`.
+  Start with `ARTEX_TRUSTED_PROXIES=127.0.0.1/32`.
+- **nginx on the host, ARTEX Program in Docker** (`docker-compose.yml`): the connection reaches the
+  container from the Docker bridge gateway (a `172.x` address), not from `127.0.0.1`. Find the
+  gateway with `docker network inspect artex_default --format '{{(index .IPAM.Config 0).Gateway}}'`.
+  The network is `<project directory>_default`. Put `ARTEX_TRUSTED_PROXIES=<gateway>/32` in `.env`,
+  then run `docker compose up -d`.
 
-For a peer in that list, ARTEX reads `X-Forwarded-For` from the right and takes the first address
-that is not a trusted proxy; from any other peer the header is ignored. Trust only proxies you run:
-a trusted peer can claim any client address.
+For a peer in that list, ARTEX Program reads `X-Forwarded-For` from the right and takes the first
+address that is not a trusted proxy. From any other peer, the header is ignored. Trust only proxies
+that you operate. A trusted peer can claim any client address.
 
-**Security headers**: every response carries `X-Content-Type-Options: nosniff`, a same-origin
-referrer policy and a `frame-ancestors 'self'` CSP; console documents additionally get a
-`Permissions-Policy` and COOP/CORP. `Strict-Transport-Security` is sent only when the request is
-known to be HTTPS: directly over TLS, or via `X-Forwarded-Proto: https` from a trusted proxy. The
-same list above enables it, so with nginx in front, the 443 server answers with HSTS after you set
-`ARTEX_TRUSTED_PROXIES`.
+**Security headers.** Each response carries `X-Content-Type-Options: nosniff`, a same-origin
+referrer policy and a `frame-ancestors 'self'` CSP. Console documents also get a `Permissions-Policy`
+and COOP/CORP. `Strict-Transport-Security` is sent only when the request is known to be HTTPS:
+directly over TLS, or through `X-Forwarded-Proto: https` from a trusted proxy. The list above
+enables it. With nginx in front, the 443 server sends HSTS after you set `ARTEX_TRUSTED_PROXIES`.
 
-> Only when SSE needs a different origin from the page (e.g. a dedicated subdomain) should you set
-> `NEXT_PUBLIC_SSE_BASE` **at build time** (it is baked into the static bundle during `next build`;
-> setting it at container runtime has no effect).
+> Set `NEXT_PUBLIC_SSE_BASE` **at build time** only when SSE must come from a different origin than
+> the page (for example a dedicated subdomain). `next build` bakes it into the static bundle. A
+> value that you set at container run time has no effect.
 
 ---
 
 ## Operations
 
-### Troubleshooting an empty tool call
+### Troubleshoot an empty tool call
 
-In the task's session transcript, expand the affected tool call and compare **Command** and
-**Output**. The `UNTRUSTED_OUTPUT` markers identify the boundary around tool output. They are
-expected and should stay enabled while troubleshooting.
+In the session transcript of the task, expand the tool call and compare **Command** and **Output**.
+The `UNTRUSTED_OUTPUT` markers show the boundary around the tool output. They are expected. Keep
+the boundary on while you troubleshoot.
 
-- **Command shows `{}`.** The recorded tool input is an empty JSON object. For a tool that
-  requires a command, this means its command argument was missing. Check which model and version
-  produced the call.
-- **Command shows `(empty)` or `(failed to load)`.** The transcript has no input detail to display
-  or could not fetch it. If the session record contains a command, include that discrepancy in a
+- **Command shows `{}`.** The recorded tool input is an empty JSON object. For a tool that needs a
+  command, the command argument was missing. Check which model and model version made the call.
+- **Command shows `(empty)` or `(failed to load)`.** The transcript has no input detail to show, or
+  could not fetch it. If the session record contains a command, include that difference in a
   report.
-- **Output shows `[]`.** This is the recorded result body. Check the row's success or failure
-  indicator and its input separately before drawing conclusions about what ran.
+- **Output shows `[]`.** This is the recorded result body. Check the success or failure indicator
+  and the input of the row separately, before you conclude what ran.
 
-For a recurring problem, share the ARTEX version or commit, the model and version, and a sanitized
-excerpt of the affected input and result. Remove credentials, target data, and other sensitive
-content before sharing.
+For a problem that comes back, share these items:
+
+- the version or commit of ARTEX Program;
+- the model and the model version;
+- a sanitized excerpt of the input and the result.
+
+Remove credentials, target data and other sensitive content before you share.
 
 ### Backups
 
-`scripts/backup.sh` dumps the Postgres database (and optionally the data directory) with
-timestamped output and rotation:
+`scripts/backup.sh` dumps the PostgreSQL database, and optionally the data directory. The output has
+a timestamp and a rotation:
 
 ```bash
 scripts/backup.sh --with-data          # db dump + data/ archive, keep 14
@@ -818,14 +883,22 @@ gunzip -c backups/artex-db-<timestamp>.sql.gz | docker compose exec -T postgres 
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 ```
 
-Stored secrets (LLM API keys, proxies and gateway custom headers, MCP env, task credentials, notification channel config,
-Brave/Tavily search keys, web search and global proxies, the execution spec of custom tools, the
-capture-proxy rewrite rules) are
-encrypted in the database with the key in `keys/secret.key` (generated at first start, mode 0600,
-next to `jwt.key`). **A database backup without that key cannot restore those secrets**: back up
-`keys/` with the dump, separately. Deployments without a persistent disk set
-`ARTEX_SECRET_KEY` (32 bytes, base64 or hex, e.g. `openssl rand -base64 32`). ARTEX refuses to start
-when the database holds encrypted secrets and no key is available.
+Stored secrets are encrypted in the database. The key is `keys/secret.key`. ARTEX Program generates
+it at first start, with mode 0600, next to `jwt.key`. The secrets are:
+
+- LLM API keys, proxies and gateway custom headers;
+- the MCP environment;
+- task credentials;
+- the configuration of the notification channels;
+- the Brave and Tavily search keys;
+- web search and global proxies;
+- the execution spec of custom tools;
+- the rewrite rules of the capture proxy.
+
+**A database backup without that key cannot restore these secrets.** Back up `keys/` together with
+the dump. On a deployment without a persistent disk, set `ARTEX_SECRET_KEY` (32 bytes, base64 or
+hex, for example `openssl rand -base64 32`). ARTEX Program refuses to start when the database holds
+encrypted secrets and no key is available.
 
 Daily cron example (03:20, operator crontab):
 
@@ -833,60 +906,46 @@ Daily cron example (03:20, operator crontab):
 20 3 * * * cd /path/to/ARTEX && scripts/backup.sh --with-data >> backups/backup.log 2>&1
 ```
 
-### Updating and upgrading
+### Update
 
-> Upgrading swaps the program and never touches data: the Postgres volume `pgdata`, `./data`
+> An upgrade replaces the program and never touches data. The PostgreSQL volume `pgdata`, `./data`
 > (traffic index, task files, transcripts), `./keys` (`jwt.key`, `secret.key`) and `./skills` are
-> preserved. **No manual database step is needed**: on every start ARTEX applies its embedded
-> `schema.sql` baseline, then any pending numbered migration from `db/migrations/`, in order, each
-> in its own transaction. Restarting the new binary is the upgrade. Back up `./data`, `keys/` and
-> the database before upgrading.
+> preserved. **No manual database step is necessary.** At each start, ARTEX Program applies its
+> embedded `schema.sql` baseline. It then applies each pending numbered migration from
+> `db/migrations/`, in order and in its own transaction. A restart of the new binary is the upgrade.
+> Back up `./data`, `keys/` and the database before you upgrade.
 
-**Update banner (opt-in, off by default)**: start ARTEX with `ARTEX_UPDATE_CHECK=1` to ask the
-public GitHub releases API for the latest tag, at most once per 24 hours (cached in memory; a
-failed check is not retried within that window). When the release is newer, the web UI shows a
-dismissible strip linking to Releases. The request sends only `User-Agent: artex-update-check`.
-Unset, ARTEX makes no update request and shows no banner.
+**Update banner (opt-in, off by default)**: start with `ARTEX_UPDATE_CHECK=1` to ask the public
+GitHub releases API for the latest tag. The check runs at most once per 24 hours and is cached in
+memory. A failed check is not retried in that window. When the release is newer, the web UI shows a
+dismissible strip that links to the releases. The request sends only
+`User-Agent: artex-update-check`. Without the variable, ARTEX Program makes no update request and
+shows no banner.
 
-#### Upgrading from a clone made before 2026-10-23
-
-The repository history was rewritten that day to drop a personal email address from the commit
-metadata. A clone made before then cannot fast-forward, and `./update.sh` now stops instead of
-silently rebuilding stale code. Recover once, then upgrade normally:
+#### Option 1: update script
 
 ```bash
-git stash                 # only if you have local changes
-git fetch origin
-git reset --hard origin/main
-git stash pop             # only if you stashed
-```
-
-Your data is unaffected: `./data`, the `pgdata` volume and `./skills` are not part of git history.
-
-#### Option 1: one-click update script
-
-```bash
-cd ARTEX
+cd artex-program
 ./update.sh
 ```
 
-The script optionally `git pull`s, then offers **① Docker update** (`docker compose build artex` →
-`docker compose up -d artex`) or **② local build update** (rebuild the frontend static assets, then
-recompile `./artex`; restart the process for it to take effect).
+The script can `git pull` first. It then offers two modes: **① Docker update** (`docker compose
+build artex`, then `docker compose up -d artex`) or **② local build update** (rebuild the frontend
+static assets, recompile `./artex`, then restart the process).
 
-#### Option 2: Docker (Compose or GHCR image)
+#### Option 2: Docker
 
 ```bash
-cd ARTEX
+cd artex-program
 git pull
-docker compose build artex
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose build artex
 docker compose up -d artex
 docker image prune -f            # optional
 ```
 
-If running the prebuilt `ghcr.io/baarai/artex` container directly, pull the new tag (`docker pull
-ghcr.io/baarai/artex:latest` or a pinned `:v<version>`) and recreate the container with the same
-`/app/data` and `/app/keys` mounts. If you run the prebuilt Compose stack, the update is:
+If you run the prebuilt container directly, pull the new tag (`docker pull
+ghcr.io/guibibeau/artex-program:latest` or a pinned `:v<version>`). Then recreate the container with
+the same `/app/data` and `/app/keys` mounts. If you run the prebuilt Compose stack:
 
 ```bash
 docker compose -f docker-compose.ghcr.yml pull
@@ -895,15 +954,15 @@ docker compose -f docker-compose.ghcr.yml up -d
 
 #### Option 3: prebuilt binaries
 
-Download the new zip, stop the old process, overwrite `artex` and `skills/` (keep `config.json` and
-`data/`), then restart:
+Download the new zip. Stop the old process. Overwrite `artex` and `skills/` (keep `config.json`
+and `data/`). Then restart:
 
 ```bash
 cp -r <extracted dir>/skills ./ && cp <extracted dir>/artex ./
 ./start.sh
 ```
 
-#### Option 4: build from source
+#### Option 4: from source
 
 ```bash
 git pull
@@ -921,23 +980,29 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 ./dev.sh    # backend(:8787) + traffic proxy(:8788) + frontend next dev(:5173) → http://localhost:5173
 ```
 
-- Backend: `go run ./cmd/artex` (without `-tags embedui`, the frontend is not embedded)
-- Frontend: `cd web && npm run dev` (`/api` is reverse-proxied to the backend, with hot reload)
-- Tests: `go test ./...`
-- Reproduce the fast CI checks locally: `./scripts/verify.sh` (add `--full` for `-race` and the static web build; add `--security` for `govulncheck`)
-- Security scan: install `govulncheck` and run `./scripts/verify.sh --security` (CI runs this on every push and pull request)
-- Mock preview (no backend): `cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
+- Backend: `go run ./cmd/artex`. Without `-tags embedui`, the frontend is not embedded.
+- Frontend: `cd web && npm run dev`. `/api` is reverse-proxied to the backend, with hot reload.
+- Tests: `go test ./...`.
+- Reproduce the fast CI checks locally: `./scripts/verify.sh`. Add `--full` for `-race` and the
+  static web build. Add `--security` for `govulncheck`.
+- Security scan: install `govulncheck` and run `./scripts/verify.sh --security`. CI runs it on each
+  push and pull request.
+- Mock preview (no backend): `cd web && NEXT_PUBLIC_MOCK=1 npm run dev`.
+
+The Solana toolchain that the agents call is not necessary to build and run the server. Install it
+on the host where the agents work: the Solana CLI, the Anchor CLI, Surfpool, a Rust toolchain, and
+Node 20 or later.
 
 ---
 
 ## Architecture
 
-ARTEX Program is an **LLM multi-agent-driven autonomous Solana program security testing system**: a Go monolithic
-backend (with the Next.js UI embedded) + PostgreSQL. Agent capabilities come from the
-[`norma`](https://github.com/Autumn-27/norma) SDK (`agentcore` / `tool` / `permission` / `harness` /
-`memory` / `transcript`). At its core is the **dual-graph architecture**, plus two autonomy
-mechanisms: **process-level information exchange between workers** and the **planner's multi-round
-shared todolist**.
+ARTEX Program is an **LLM multi-agent system for autonomous security testing of Solana programs**.
+It has a Go backend (with the embedded Next.js UI) and PostgreSQL. The agent capabilities come from
+the [`norma`](https://github.com/Autumn-27/norma) SDK (`agentcore`, `tool`, `permission`, `harness`,
+`memory`, `transcript`). The core is the **dual-graph architecture**. Two autonomy mechanisms complete
+it: **exchange of information between workers at process level**, and the **todolist that the
+planner shares across rounds**.
 
 ```mermaid
 flowchart TB
@@ -986,51 +1051,56 @@ flowchart TB
 
 | Layer | Responsibility |
 | --- | --- |
-| **Frontend** | Next.js static export embedded via `go:embed`; tasks, assets, exploration and coverage graphs, traffic, human-in-the-loop chat |
-| **server** | `net/http` routing, JWT auth, SSE; `Manager` owns tasks, engines and DB stores |
-| **engine** | One `plannerLoop` + N worker goroutines per task; intent claiming, timeout/pause/drain |
-| **agent** | goals / planner / worker / mainagent; `ToolSet` exposes the dual graphs as LLM tools |
-| **db** | PostgreSQL persistence (pgx); embedded schema and numbered migrations applied at startup |
-| **Supporting** | Recording MITM proxy, approval gate, async enrichment, MCP/skills/memory/report |
+| **Frontend** | Next.js static export, embedded with `go:embed`. Tasks, assets, exploration and coverage graphs, traffic, human-in-the-loop chat |
+| **server** | `net/http` routing, JWT auth, SSE. `Manager` owns the tasks, the engines and the DB stores |
+| **engine** | One `plannerLoop` and N worker goroutines per task. Intent claiming, timeout, pause, drain |
+| **agent** | goals, planner, worker, mainagent. `ToolSet` exposes the dual graphs as LLM tools |
+| **db** | PostgreSQL persistence (pgx). The embedded schema and the numbered migrations are applied at startup |
+| **Supporting** | Recording proxy, approval gate, async enrichment, MCP, skills, memory, report |
 
-For the code-level map (execution flow, trust boundaries, decisions) see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); for startup, configuration precedence,
-backup and key rotation see [docs/OPS.md](docs/OPS.md).
+For the code-level map (execution flow, trust boundaries, decisions), see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For startup, configuration precedence, backup and key
+rotation, see [docs/OPS.md](docs/OPS.md).
 
 ---
 
 ## Security
 
-Please report vulnerabilities privately through GitHub Security Advisories; see
-[SECURITY.md](SECURITY.md).
+Report vulnerabilities in private. See [SECURITY.md](SECURITY.md).
 
 Operational security properties:
 
-- **Secrets at rest**: LLM keys/proxies/gateway headers, MCP environment, task credentials, notification config,
-  search keys, proxies, custom-tool execution specs, capture-proxy rewrite rules and traffic
-  evidence snapshots are encrypted
-  with AES-256-GCM using `keys/secret.key` (or `ARTEX_SECRET_KEY`). ARTEX refuses to start when
-  encrypted data exists and no usable key is available.
-- **First-run claim**: `/setup` requires a one-time token printed at startup; the UI binds to
-  `127.0.0.1` by default.
-- **Login protection**: 10 attempts per minute per client IP, with `ARTEX_TRUSTED_PROXIES` for
+- **Secrets at rest.** LLM keys, proxies, gateway headers, the MCP environment, task credentials,
+  the notification configuration, search keys, proxies, the execution specs of custom tools, the
+  rewrite rules of the capture proxy and the traffic evidence snapshots are encrypted with
+  AES-256-GCM. The key is `keys/secret.key` (or `ARTEX_SECRET_KEY`). ARTEX Program refuses to start
+  when encrypted data exists and no usable key is available.
+- **First-run claim.** `/setup` needs a one-time token that the server prints at startup. The UI
+  binds to `127.0.0.1` by default.
+- **Login protection.** 10 attempts per minute per client IP. Use `ARTEX_TRUSTED_PROXIES` for the
   correct client attribution behind a reverse proxy.
-- **Untrusted tool output**: framed as data for every agent by default (prompt-injection boundary).
-- **Release integrity**: SHA-256 sums, CycloneDX SBOM and GitHub build provenance attestations for
-  release archives.
+- **Untrusted tool output.** Framed as data for each agent by default. This is the
+  prompt-injection boundary.
+- **Untrusted on-chain data.** Account data, program logs and RPC responses come from the chain.
+  The prompts tell the agents to treat them as data.
+- **Release integrity.** SHA-256 sums, a CycloneDX SBOM and GitHub build provenance attestations for
+  the release archives.
 
 ---
 
 ## About this project
 
-This repository is the actively maintained community continuation of ARTEX, originally by [Autumn-27](https://github.com/Autumn-27). It diverges from the original with its own features and fixes, tracked in [CHANGELOG.md](CHANGELOG.md), under the same AGPL-3.0 license. The original repository is no longer public, so the link points to the author profile.
+ARTEX Program is a fork of [ARTEX](https://github.com/BaaRai/ARTEX). ARTEX is the community
+continuation of the original project by [Autumn-27](https://github.com/Autumn-27). The fork
+re-orients the platform to Solana programs, with the same AGPL-3.0 license. The changes are in
+[CHANGELOG.md](CHANGELOG.md) and in the section [Changes from ARTEX](#changes-from-artex).
 
 ---
 
 ## References and prior art
 
 - [Cairn](https://github.com/oritera/Cairn)
-- Approval-details UI inspired by [AegisHook](https://github.com/RuoJi6/AegisHook)
+- The approval-details UI is inspired by [AegisHook](https://github.com/RuoJi6/AegisHook)
 
 ---
 
@@ -1038,48 +1108,49 @@ This repository is the actively maintained community continuation of ARTEX, orig
 
 ### Open source license
 
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**; see the
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See the
 [LICENSE](LICENSE) file for the full terms.
 
-Anyone may use, modify and distribute this project, but **derivative works must also be open-sourced
-under AGPL-3.0**; in particular, **if you modify this project and provide it to users over a
+Anyone can use, modify and distribute this project. **Derivative works must also be open source
+under AGPL-3.0.** In particular, **if you modify this project and provide it to users over a
 network (for example as an online service), you must make the corresponding complete source code
-available to those users**.
+available to those users.**
 
-> **Important**: the open source license does not restrict how the software is used. The usage
-> restrictions and disclaimer below are additional terms from the maintainers.
+> **Important**: the open source license does not restrict how you use the software. The usage
+> restrictions and the disclaimer below are additional terms from the maintainers.
 
-**ARTEX is an offensive-security tool. Use it only against systems you own, or that you are
-explicitly authorized to test (your own lab, your organization's assets, or a bug bounty /
-vulnerability disclosure program's targets within its published scope and rules of engagement).
-Any use without authorization violates these terms.**
+**ARTEX Program is a security testing tool. Use it only against systems that you own, or that you
+are explicitly authorized to test: your own lab, the assets of your organization, or the targets of
+a bug bounty or vulnerability disclosure program, within its published scope and rules of
+engagement. Any use without authorization violates these terms.**
 
 ### Permitted use
 
-- Read, learn and study this project's source code;
-- Run it against systems you own or in isolated lab environments;
-- Run it against authorized bug bounty / vulnerability disclosure targets, within their published
-  scope and rules of engagement;
+- Read, learn and study the source code of this project.
+- Run it against systems that you own, or in an isolated lab.
+- Run it against authorized bug bounty or vulnerability disclosure targets, within their published
+  scope and rules of engagement.
 - Academic research and code review.
 
 ### Prohibited actions
 
-- Scanning, probing, exploiting or attacking any website, online service or networked system
-  without the explicit authorization of its owner;
-- Testing outside a program's published scope, or in violation of its rules of engagement;
+- Scan, probe, exploit or attack any program, website, online service or networked system without
+  the explicit authorization of its owner.
+- Test outside the published scope of a program, or in violation of its rules of engagement.
 - Illegal intrusion, data theft, extortion, denial of service, or any destructive or criminal
-  activity;
+  activity.
 - Any use that violates the laws and regulations of your country or region.
 
 ### Compliance responsibility
 
-Users must comply with all laws and regulations of their country or region regarding cybersecurity,
-data protection and computer crime. **All legal liability and consequences arising from the use of
-this tool are borne by the user.**
+Users must comply with all laws and regulations of their country or region about cybersecurity,
+data protection and computer crime. **The user bears all legal liability and consequences that come
+from the use of this tool.**
 
 ### Disclaimer
 
-This project is provided "as is", without any express or implied warranty. The authors and
+This project is provided "as is", without any express or implied warranty. The authors and the
 contributors are not liable for any direct or indirect loss, data loss, system damage or legal
-dispute caused by the use of this tool (whether used properly or not). **Downloading, installing or
-using this project means you have read, understood and agreed to all of the above terms.**
+dispute that the use of this tool causes, whether the use is proper or not. **When you download,
+install or use this project, you confirm that you read, understood and agreed to all the terms
+above.**

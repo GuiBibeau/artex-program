@@ -2,6 +2,46 @@
 
 All notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [artex-program.1] - 2026-11-25
+
+This is the first state of **ARTEX Program**, the fork that re-orients ARTEX to Solana programs. It
+is based on ARTEX at commit `3cb0638`. The entries below this one are the history of ARTEX.
+
+### Added
+
+- **Solana asset types**: `program`, `instruction`, `account`, `authority`, `mint` and
+  `token_account`, keyed by on-chain address, with the program id as the parent.
+- **Scope kinds** `program` and `cluster`, with the coverage, the coverage graph, the asset search
+  and the manual scope registration following the program subtree.
+- **Proof through RPC evidence**: a finding on a Solana asset closes a goal through the recorded
+  JSON-RPC exchange on the RPC host of the `cluster` scope of the task.
+- **Solana skills**: `solana-recon`, `anchor-audit`, `solana-bytecode` and `solana-exploit`.
+- **Approval rules** for funds, staking, voting, program and token state changes, `anchor deploy`
+  and `anchor upgrade`, and a transaction that a command line submits.
+- **Goal gate**: a Solana program id is a concrete target for a task goal.
+- `CONTEXT.md` with the terms that the code, the prompts and the skills share.
+
+### Changed
+
+- The six built-in prompts are written for Solana program testing. They include the money rules and
+  the wallet funding protocol. An existing ARTEX database gets the new prompts once per agent.
+- The worker rate guidance paces RPC work. The web scanners are not named anymore.
+- Worker shells set `NO_PROXY` for loopback and for the package registries and source hosts.
+- The asset views have a **Solana programs** tab. The coverage graph has nodes for the six types.
+- The image has a pinned Solana CLI, Anchor, Surfpool and Rust toolchain on Debian trixie. It is
+  `linux/amd64` only.
+- README, `SECURITY.md`, `CONTRIBUTING.md` and the documents in `docs/` are reviewed for Simplified
+  Technical English.
+
+### Removed
+
+- The web-only skills (`api-recon`, `api-security`, `bbot-recon`, `edr-bypass-re`, `php2shell`,
+  `playwright-cli`, `scopesentry`).
+- The web scanners, sqlmap, bbot, the nuclei templates and Playwright from the image.
+- The scanner ingestion tools (`ingest_bbot`, `ingest_scan_output`) from the default set of the
+  worker. The code stays.
+- The upstream triage bot workflow, and the upstream research note on an unrelated product.
+
 ## [Unreleased]
 
 ### Added

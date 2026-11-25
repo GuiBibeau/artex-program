@@ -14,10 +14,10 @@ so the first experiment cannot quietly become an unguarded rewrite loop.
 | B. across tasks | evidence-gated lessons from closed tasks | shadow mode, PR #104 |
 | C. on the harness | prompts, skills, tool guidance | **not built**; this is its contract |
 
-Loop A produces task gain. Loop B is meant to produce retained gain: a lesson
-must survive a closed task and change a later one. Loop C is the only loop that
-can produce improver gain, and it is the only one that can silently damage the
-product, which is why it goes last.
+Loop A produces a gain in one task. Loop B is meant to produce a gain that stays: a lesson must
+survive a closed task and change a later task. Loop C is the only loop that can produce a gain in
+the improver itself. It is also the only loop that can damage the product without a visible sign.
+It therefore goes last.
 
 ## Loop C contract
 
@@ -31,10 +31,14 @@ Any PR that proposes, probes, or adopts harness edits must satisfy all of:
    show the diff. It may not change the active prompt. Adoption is one explicit
    owner action, like a baseline pin.
 3. **Immutable surfaces.** The following are never in the search space:
-   the adversarial and quality gates, scope and authorization checks,
-   prompt-injection defenses, tool allowlists, and the code-owned prompt tails
-   (traffic tools, artifact rules, lesson block). Only the editable prompt body,
-   skill markdown, and tool descriptions can be proposed.
+
+   - the adversarial and quality gates;
+   - the scope and authorization checks;
+   - the prompt-injection defenses;
+   - the tool allowlists;
+   - the code-owned prompt tails (traffic tools, artifact rules, lesson block).
+
+   Only the editable prompt body, the skill markdown and the tool descriptions can be proposed.
 4. **One-step rollback.** Every adopted prompt change is a new
    `agent_prompts` version, so rollback is a pointer change. Skills are files
    under git; no adoption may bypass review.
@@ -50,9 +54,9 @@ Any PR that proposes, probes, or adopts harness edits must satisfy all of:
    from ModularRSI (arXiv 2609.14857). A paired evolving/non-evolving comparison
    guards against misattributed safety regressions, following SEABench
    (arXiv 2609.35596).
-8. **No self-approval and no silent state.** The loop cannot set its own status,
-   edit its own acceptance criteria, or write to the lesson library as
-   `adopted`. Lesson status changes stay owner actions.
+8. **No self-approval and no silent state.** The loop cannot set its own status. It cannot edit
+   its own acceptance criteria. It cannot write to the lesson library as `adopted`. A change of the
+   status of a lesson stays an action of the owner.
 
 A future Loop C PR is acceptable only with:
 
@@ -108,7 +112,7 @@ Specific ideas referenced above:
   Coding-Agent Harnesses, arXiv:2604.25850 (observable edits with predictions
   verified later, the same discipline as the benchmark gate here).
 - A Safety in Self-Evolving Agents survey, arXiv:2610.00093 (why properties
-  must survive accumulation and cross-context reuse, not just entry screening).
+  must survive accumulation and cross-context reuse, not only entry screening).
 
 Only ideas are borrowed. ARTEX code is independent Go and Python; no source
 from harness2 or the referenced projects is copied.

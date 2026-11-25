@@ -1,9 +1,12 @@
-# ARTEX Program from a published GHCR image, with the same PostgreSQL service as
+# ARTEX Program from the published GHCR image, with the same PostgreSQL service as
 # docker-compose.yml. Use this file to run and update without a git checkout:
 #
-# NOT YET FOR ARTEX PROGRAM: ghcr.io/baarai/artex is the upstream ARTEX image
-# (web-oriented, without the Solana toolchain). Until an image of this fork is
-# published, build from the checkout with `docker compose up -d --build`.
+#   docker compose -f docker-compose.ghcr.yml pull
+#   docker compose -f docker-compose.ghcr.yml up -d
+#
+# The image is published by the release workflow on each v* tag. Until the first
+# tag exists, the pull fails with "denied": build from the checkout with
+# `docker compose up -d --build`.
 #
 #   docker compose -f docker-compose.ghcr.yml pull
 #   docker compose -f docker-compose.ghcr.yml up -d
@@ -33,7 +36,7 @@ services:
     restart: unless-stopped
 
   artex:
-    image: ghcr.io/baarai/artex:${ARTEX_IMAGE_TAG:-latest}
+    image: ghcr.io/guibibeau/artex-program:${ARTEX_IMAGE_TAG:-latest}
     # Agent processes run as an unprivileged executor (-exec-uid): no setuid program
     # or file capability may raise them back to root.
     security_opt:

@@ -1,10 +1,14 @@
 # Task archive storage
 
-Task archives use local disk by default. The optional S3-compatible backend moves
-cold task packages to object storage while retaining Archive, Restore and Delete.
-Active workspaces and PostgreSQL remain local. This is task cold storage, not a
-full-installation backup; a recovery plan must preserve the database, data
-directory, bucket objects, and the credentials or roles needed to read them.
+Task archives use the local disk by default. The optional S3-compatible backend moves cold task
+packages to object storage. Archive, Restore and Delete stay available. The active workspaces and
+PostgreSQL stay local. This is cold storage for tasks, not a backup of the full installation. A
+recovery plan must preserve four things:
+
+- the database;
+- the data directory;
+- the objects in the bucket;
+- the credentials or the roles that read them.
 
 ## Configuration
 
@@ -55,18 +59,17 @@ key ARN is configured, HEAD must return that exact ARN before ARTEX accepts
 the object. Size and full SHA-256 readback remain mandatory; encryption metadata
 does not replace content verification.
 
-For SSE-KMS, set both the bucket's default encryption and ARTEX to `aws:kms`;
-set `ARTEX_ARCHIVE_S3_KMS_KEY_ID` to the intended key when using a customer-managed
-key. An explicit `AES256` request takes precedence over a bucket's KMS default,
-so do not leave ARTEX on SSE-S3 when the bucket is intended to use KMS.
+For SSE-KMS, set the default encryption of the bucket and the setting of ARTEX Program to
+`aws:kms`. With a customer-managed key, set `ARTEX_ARCHIVE_S3_KMS_KEY_ID` to that key. An explicit
+`AES256` request takes precedence over the KMS default of a bucket. When the bucket must use KMS,
+do not leave ARTEX Program on SSE-S3.
 
-The principal needs object upload, read (HEAD and ranged GET), delete and
-multipart upload/abort permissions. For versioned buckets, grant
-`s3:DeleteObjectVersion` as well: failed verification deletes the version just
-uploaded, rather than creating a delete marker. KMS uploads/readback also need the applicable
+The principal needs these permissions: object upload, read (HEAD and ranged GET), delete, and
+multipart upload and abort. For a bucket with versioning, grant `s3:DeleteObjectVersion` too. A
+failed verification then deletes the version that was just uploaded. It does not create a delete
+marker. KMS uploads/readback also need the applicable
 key-policy and IAM permissions for `kms:GenerateDataKey` and `kms:Decrypt`.
-Retain old KMS keys and decrypt permissions when changing the key or mode; restore
-does not require an older object to use the current upload policy.
+When you change the key or the mode, retain the old KMS keys and the permission to decrypt. A restore does not require that an older object uses the current upload policy.
 
 Compatible providers must support the requested SSE mode and its HEAD metadata,
 plus conditional ranged reads. A provider that ignores the encryption request
@@ -78,9 +81,14 @@ and [HEAD encryption response rules](https://docs.aws.amazon.com/AmazonS3/latest
 
 ## Credential sources
 
-Without the archive-specific override, ARTEX uses the AWS SDK default credential
-chain, including standard AWS environment variables, shared profiles, web
-identity, ECS task credentials and EC2 instance credentials through IMDS. Role
+Without the archive-specific override, ARTEX Program uses the default credential chain of the
+AWS SDK. That chain includes:
+
+- the standard AWS environment variables;
+- shared profiles;
+- web identity;
+- ECS task credentials;
+- EC2 instance credentials through IMDS. Role
 credentials retain the SDK's automatic refresh behavior. A named shared profile
 can be selected with `AWS_PROFILE`.
 

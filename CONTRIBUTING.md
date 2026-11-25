@@ -2,30 +2,50 @@
 
 ## First contribution
 
-- **Share feedback.** Check [open issues](https://github.com/BaaRai/ARTEX/issues) for the same problem or proposal and add any new details there. For a new idea, explain what you were trying to do and what would make it easier.
-- **Report a problem.** Include a short reproduction and the relevant environment. For a UI issue, a sanitized screenshot and the browser version can help. Remove credentials, private URLs, and sensitive task data before posting.
-- **Report a security issue.** Do not open a public issue for a vulnerability; follow [SECURITY.md](SECURITY.md) to report it privately.
-- **Send a small change.** A documentation correction or a focused UI improvement is a good place to start. Check [open pull requests](https://github.com/BaaRai/ARTEX/pulls) for overlapping work and refer to the relevant issue in your PR so readers can find the discussion.
+- **Share feedback.** Check the [open issues](https://github.com/GuiBibeau/artex-program/issues)
+  for the same problem or proposal, and add new details there. For a new idea, explain what you
+  tried to do and what would make it easier.
+- **Report a problem.** Include a short reproduction and the environment. For a UI problem, a
+  screenshot without sensitive data and the browser version help. Remove credentials, private URLs
+  and sensitive task data before you post.
+- **Report a security problem.** Do not open a public issue for a vulnerability. Follow
+  [SECURITY.md](SECURITY.md) to report it in private.
+- **Send a small change.** A correction of the documentation or a focused UI improvement is a good
+  start. Check the [open pull requests](https://github.com/GuiBibeau/artex-program/pulls) for
+  overlapping work. Refer to the relevant issue in your pull request, so that readers can find the
+  discussion.
 
 ## Pull requests
 
-- **At most 7 open pull requests per contributor.** The repository enforces this with GitHub's pull request creation limit, drafts included: when you reach it, close or merge one before opening another. Review is manual, one change at a time, so a larger batch makes the queue unmanageable and slows everyone down, including you. If you have more changes queued, open one issue that lists them and wait for the current ones to be reviewed.
-- **One focused change per PR.** If a change has independent parts, split it into a small number of PRs and say in each description what the other parts depend on.
-- **Describe the change.** State the problem, the behavior change and what you tested. A pull request with no description is a request for changes.
-- **Provider support stays generic.** Any OpenAI- or Anthropic-compatible endpoint works through a model profile; provider convenience goes in as a neutral preset (name and base URL) or a docs recipe, with no vendor logos, promotional codes, baked vendor endpoints, or vendor-specific environment variables. A new wire format needs a schema migration, a profile save/load test, and a live connection test.
+- **At most 7 open pull requests per contributor.** Drafts count. When you reach the limit, close
+  or merge one before you open another. Review is manual and handles one change at a time. A large
+  batch slows the queue for everybody. If you have more changes, open one issue that lists them,
+  and wait for the review of the current ones.
+- **One focused change per pull request.** When a change has independent parts, split it into a
+  small number of pull requests. State in each description what the other parts depend on.
+- **Describe the change.** State the problem, the change in behavior, and what you tested. A pull
+  request without a description is a request for changes.
+- **Provider support stays generic.** Each OpenAI-compatible or Anthropic-compatible endpoint works
+  through a model profile. A provider convenience goes in as a neutral preset (a name and a base
+  URL) or as a recipe in the documentation. Do not add vendor logos, promotional codes, fixed
+  vendor endpoints, or vendor-specific environment variables. A new wire format needs a schema
+  migration, a profile save and load test, and a live connection test.
 
 ## Updating Docker image pins
 
-The Dockerfile and the PostgreSQL service in `docker-compose.yml` use a readable tag followed
-by a digest. Review these pins regularly for upstream security updates. When refreshing a pin,
-run `docker buildx imagetools inspect <image>:<tag>` and use the top-level index digest. Check
-that the index includes `linux/amd64` and `linux/arm64` before proposing the update. Record the
-old and new digests in the PR so reviewers can verify the change.
+The Dockerfile and the PostgreSQL service in `docker-compose.yml` use a readable tag followed by a
+digest. Review these pins regularly for upstream security updates. When you refresh a pin:
+
+1. Run `docker buildx imagetools inspect <image>:<tag>` and use the top-level index digest.
+2. Check that the index includes the platforms that the image builds for. The base images are
+   multi-arch. The Solana toolchain stage is `linux/amd64` only.
+3. Record the old and the new digest in the pull request, so that reviewers can verify the change.
 
 ## Issues
 
-- One problem per issue. Include the version or commit, what you ran and what you expected.
+- One problem per issue. Include the version or commit, what you ran, and what you expected.
 
 ## Security
 
-- Do not open a public issue for a vulnerability in ARTEX itself. Follow the [private reporting instructions](SECURITY.md#reporting-a-vulnerability).
+- Do not open a public issue for a vulnerability in ARTEX Program. Follow the
+  [instructions for a private report](SECURITY.md#reporting-a-vulnerability).

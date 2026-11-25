@@ -1,35 +1,49 @@
-# Opt-in Linux Transparent TCP Inbound & Raw TCP Recording (P4.1b)
+# Linux transparent TCP inbound and raw TCP recording (opt-in)
 
-ARTEX ships an opt-in **Linux-only IPv4 transparent TCP inbound listener** in `traffic/` that accepts connections redirected by `iptables` or `nftables` `REDIRECT` rules, recovers each socket's original IPv4 destination via `getsockopt(SOL_IP, SO_ORIGINAL_DST)`, enforces the existing target gate and egress governor before dialing, and records the connection in SQLite `raw_tcp_streams`.
+ARTEX Program has an opt-in **transparent IPv4 TCP listener for Linux only** in `traffic/`. It
+accepts the connections that `iptables` or `nftables` `REDIRECT` rules send to it. It recovers the
+original IPv4 destination of each socket with `getsockopt(SOL_IP, SO_ORIGINAL_DST)`. It enforces the
+target gate and the egress governor before the dial. It records the connection in the SQLite table
+`raw_tcp_streams`.
 
-## Opt-in Configuration (Off by Default)
+## Configuration (off by default)
 
-| Environment Variable | Default | Behavior |
+| Environment variable | Default | Behavior |
 |---|---|---|
-| `ARTEX_TRANSPARENT_TCP_ENABLED` | unset (off) | Set to `1` / `true` / `on` / `yes` to start the transparent TCP listener on `127.0.0.1:1081` (IPv4 loopback). Explicit `0` / `false` / `off` / `no` forces it off even if `ARTEX_TRANSPARENT_TCP_ADDR` is set. |
-| `ARTEX_TRANSPARENT_TCP_ADDR` | `127.0.0.1:1081` | Explicit IPv4 TCP bind address; setting a non-empty value also enables the listener unless `ARTEX_TRANSPARENT_TCP_ENABLED` is explicitly false. Use `0.0.0.0:1081` only when redirecting traffic from other interfaces (`PREROUTING`) and protect the port with a host firewall. |
+| `ARTEX_TRANSPARENT_TCP_ENABLED` | unset (off) | Set to `1`, `true`, `on` or `yes` to start the transparent TCP listener on `127.0.0.1:1081` (IPv4 loopback). An explicit `0`, `false`, `off` or `no` forces it off, also when `ARTEX_TRANSPARENT_TCP_ADDR` is set. |
+| `ARTEX_TRANSPARENT_TCP_ADDR` | `127.0.0.1:1081` | The IPv4 TCP bind address. A value that is not empty also enables the listener, unless `ARTEX_TRANSPARENT_TCP_ENABLED` is explicitly false. Use `0.0.0.0:1081` only when you redirect traffic from other interfaces (`PREROUTING`). Protect the port in the firewall of the host. |
 
-- **Flag off**: no transparent TCP listener is started, no firewall rules are touched, and the HTTP MITM proxy is unchanged.
-- **Requires traffic recorder**: the server only starts the transparent TCP listener when the traffic recorder is enabled (inside the traffic proxy block in `server/manager.go`). If traffic capture is disabled, setting these environment variables does not open a listener.
-- **Linux only**: on non-Linux operating systems (`windows`, `darwin`), leaving the flag off is a no-op; explicitly enabling it logs `ErrTransparentTCPNotLinux` and leaves the listener disabled.
-- **IPv4 only (IPv6 not covered)**: P4.1b recovers `SO_ORIGINAL_DST` (`SOL_IP`, `AF_INET`) for IPv4 TCP sockets only. IPv6 (`IP6T_SO_ORIGINAL_DST`) is **not covered**; IPv6 bind addresses and IPv6 sockets are refused.
-- **Firewall never touched by ARTEX**: ARTEX never installs, modifies, or deletes `iptables`/`nftables` rules. Root or `CAP_NET_ADMIN` is required **only** by the operator when installing and cleaning up the host redirect rules—never to run ARTEX itself.
+- **Flag off**: no transparent TCP listener starts. No firewall rule changes. The HTTP MITM proxy
+  is unchanged.
+- **The traffic recorder is necessary.** The server starts the transparent TCP listener only when
+  the traffic recorder is on (inside the traffic proxy block in `server/manager.go`). With traffic
+  capture off, these environment variables do not open a listener.
+- **Linux only.** On `windows` and `darwin`, a flag that is off does nothing. An explicit enable
+  logs `ErrTransparentTCPNotLinux`, and the listener stays off.
+- **IPv4 only.** The listener recovers `SO_ORIGINAL_DST` (`SOL_IP`, `AF_INET`) for IPv4 TCP sockets
+  only. IPv6 (`IP6T_SO_ORIGINAL_DST`) is **not covered**. An IPv6 bind address and an IPv6 socket
+  are refused.
+- **ARTEX Program never changes the firewall.** It does not install, change or delete `iptables` or
+  `nftables` rules. Root or `CAP_NET_ADMIN` is necessary **only** for the operator, to install and
+  to remove the redirect rules of the host. It is never necessary to run ARTEX Program.
 
-## Firewall Rules & Cleanup (Operator-Managed)
+## Firewall rules and cleanup (managed by the operator)
 
-Choose **either** `iptables` **or** `nftables`. Always exclude the UID running ARTEX (example: `artex`) from local `OUTPUT` redirect rules so ARTEX's own outbound dials do not loop back into the transparent listener.
+Select **one** of `iptables` or `nftables`. Always exclude the UID that runs ARTEX Program
+(example: `artex`) from the local `OUTPUT` redirect rules. The outbound dials of ARTEX Program then
+do not loop back into the transparent listener.
 
-### Option 1: `iptables` (IPv4 local `OUTPUT` REDIRECT)
+### Option 1: `iptables` (IPv4, local `OUTPUT` REDIRECT)
 
-Install into a dedicated chain so cleanup is atomic:
+Install the rules in a dedicated chain. The cleanup is then atomic:
 
 ```bash
 # Requires root or CAP_NET_ADMIN
 sudo iptables -t nat -N ARTEX_TRANSPARENT
-# Never redirect ARTEX's own outbound dials or loopback traffic
+# Never redirect the outbound dials of ARTEX Program or loopback traffic
 sudo iptables -t nat -A ARTEX_TRANSPARENT -m owner --uid-owner artex -j RETURN
 sudo iptables -t nat -A ARTEX_TRANSPARENT -d 127.0.0.0/8 -j RETURN
-# Example: redirect outbound TCP to lab target 198.51.100.0/24 into ARTEX on 127.0.0.1:1081
+# Example: redirect outbound TCP to the lab target 198.51.100.0/24 into ARTEX Program on 127.0.0.1:1081
 sudo iptables -t nat -A ARTEX_TRANSPARENT -p tcp -d 198.51.100.0/24 -j REDIRECT --to-ports 1081
 sudo iptables -t nat -A OUTPUT -p tcp -j ARTEX_TRANSPARENT
 ```
@@ -42,11 +56,14 @@ sudo iptables -t nat -F ARTEX_TRANSPARENT
 sudo iptables -t nat -X ARTEX_TRANSPARENT
 ```
 
-*(For traffic arriving on another interface—for example a container or routed VM—bind `ARTEX_TRANSPARENT_TCP_ADDR=0.0.0.0:1081`, attach `ARTEX_TRANSPARENT` to `PREROUTING` instead of `OUTPUT`, and drop direct non-redirected packets to port 1081 at the host firewall.)*
+For traffic that arrives on another interface (a container or a routed VM), bind
+`ARTEX_TRANSPARENT_TCP_ADDR=0.0.0.0:1081`, attach `ARTEX_TRANSPARENT` to `PREROUTING` instead of
+`OUTPUT`, and drop the direct packets to port 1081 that are not redirected in the firewall of the
+host.
 
-### Option 2: `nftables` (IPv4 local `OUTPUT` REDIRECT)
+### Option 2: `nftables` (IPv4, local `OUTPUT` REDIRECT)
 
-Install into a dedicated table so cleanup is a single command:
+Install the rules in a dedicated table. The cleanup is one command:
 
 ```bash
 # Requires root or CAP_NET_ADMIN
@@ -68,14 +85,31 @@ Cleanup (exact removal):
 sudo nft delete table ip artex_transparent
 ```
 
-## Policy Enforcement, Loop Guard & Storage (Shared with P4.1a)
+## Policy checks, loop guard and storage (shared with the SOCKS5 listener)
 
-For every accepted TCP connection:
+For each accepted TCP connection:
 
-1. **Original destination recovery**: reads `getsockopt(SOL_IP, SO_ORIGINAL_DST)` under `HandshakeTimeout` (default `10s`), parses `struct sockaddr_in` (rejecting short buffers, non-`AF_INET` families including IPv6, port `0`, and `0.0.0.0`), and rejects **self-redirects** (direct non-redirected connections where `SO_ORIGINAL_DST` equals the listener's own address/port) before dialing.
-2. **Egress governor (`egress.Do(egress.Current(), ...)`)**: enforces the active noise profile (`PaceTimeout`, default `30s`) before dialing.
-3. **Target gate (`intercept.Interceptor.DialSOCKS5` / `intercept.PinnedDialer`)**: enforces global asset block rules and any enabled `intercept.TargetScope` pins/exemptions before opening any outbound socket. Because the transparent listener only knows the recovered destination IP (never a DNS hostname), hostname-based block or allow rules cannot match—IP and CIDR rules are the ones that apply. Refused connections are closed immediately without dialing and without writing a store row.
-4. **Relay & bounds**: reuses the P4.1a full-duplex half-close-aware relay (`CloseWrite`) and defaults (`MaxConcurrent=64`, `MaxBytesPerDir=4 MiB`, `PreviewBytes=8 KiB`, `IdleTimeout=2m`, `HandshakeTimeout=10s`, `DialTimeout=30s`, `PaceTimeout=30s`).
-5. **SQLite storage**: records one row per completed connection in `raw_tcp_streams` (`protocol='tcp'`, atomic temp+rename `_blobs/sha256/` spill + `blob_refs`), with **zero HTTP `exchanges` rows** and **no PostgreSQL migration**.
+1. **Recovery of the original destination.** The listener reads `getsockopt(SOL_IP,
+   SO_ORIGINAL_DST)` within `HandshakeTimeout` (default `10s`). It parses `struct sockaddr_in` and
+   rejects a short buffer, a family other than `AF_INET` (IPv6 included), port `0`, and `0.0.0.0`.
+   It rejects a **self-redirect** before the dial: a direct connection that is not redirected, where
+   `SO_ORIGINAL_DST` equals the address and port of the listener.
+2. **Egress governor** (`egress.Do(egress.Current(), ...)`). It enforces the active noise profile
+   before the dial (`PaceTimeout`, default `30s`).
+3. **Target gate** (`intercept.Interceptor.DialSOCKS5` and `intercept.PinnedDialer`). It enforces the
+   global asset block rules, and the pins and exemptions of an enabled `intercept.TargetScope`,
+   before an outbound socket opens. The transparent listener knows only the recovered destination
+   IP, never a DNS host name. A block or allow rule on a host name therefore cannot match. The IP
+   and CIDR rules apply. A refused connection closes at once, without a dial and without a row in
+   the store.
+4. **Relay and limits.** The listener reuses the full-duplex relay of the SOCKS5 listener, with the
+   half-close (`CloseWrite`), and its defaults: `MaxConcurrent=64`, `MaxBytesPerDir=4 MiB`,
+   `PreviewBytes=8 KiB`, `IdleTimeout=2m`, `HandshakeTimeout=10s`, `DialTimeout=30s`,
+   `PaceTimeout=30s`.
+5. **SQLite storage.** Each completed connection writes one row to `raw_tcp_streams`
+   (`protocol='tcp'`), with an atomic spill to `_blobs/sha256/` (a temporary file, then a rename)
+   and a reference in `blob_refs`. There are **no** HTTP `exchanges` rows and no PostgreSQL
+   migration.
 
-Closing `Traffic` stops accepting new transparent connections, closes active sockets, and waits for all handler goroutines to exit before closing SQLite.
+`Traffic.Close` stops new transparent connections, closes the active sockets, and waits for all
+handler goroutines to exit. Then it closes SQLite.

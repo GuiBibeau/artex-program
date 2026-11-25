@@ -1,17 +1,23 @@
 # Capture-proxy rewrite rules
 
-A rewrite rule matches a request or a response that goes through the capture proxy and describes
-how to change it: the method, the path and query, headers, the body, the status code.
+A rewrite rule matches a request or a response that goes through the capture proxy. The rule says
+how to change it: the method, the path and query, the headers, the body, or the status code.
 
-**Status: the capture proxy applies enabled rules to HTTP traffic (request and response phases),
-records what it did, tags bound evidence snapshots, supports per-replay rule opt-in, carries
-rewrite provenance in traffic archive v2, exposes rewrite counters and a rewritten filter/flag on
-`GET /api/traffic`, and shows the filter and badge on the Traffic page.** Not yet in this change:
-the rule-management web UI. See [Application in the capture proxy](#application-in-the-capture-proxy)
-for what is covered and what is not.
+**Status.** The capture proxy has these functions:
 
-Rules are a convenience for the operator, not a security control: a rule that fails leaves the
-message unchanged (fail open).
+- It applies the enabled rules to HTTP traffic, in the request phase and in the response phase.
+- It records what it did, and it tags the bound evidence snapshots.
+- It supports the opt-in to the rules for each replay.
+- It carries the provenance of the rewrites in traffic archive v2.
+- `GET /api/traffic` exposes the rewrite counters and a filter and a flag for rewritten exchanges.
+- The traffic page shows the filter and a badge.
+
+The rule management has no web UI in this version. Use the API. See
+[Application in the capture proxy](#application-in-the-capture-proxy) for what is covered and what
+is not.
+
+Rules are a convenience for the operator. They are not a security control. A rule that fails leaves
+the message unchanged (fail open).
 
 ## Rule
 
@@ -61,34 +67,46 @@ Regular expressions use Go's `regexp` syntax (RE2).
 
 In a replacement, `value` is a template: `$1` or `${name}` insert a capture group.
 
-Within a rule, actions run in a fixed order whatever the order they are listed in: method and URL,
-`delete_header`, `set_header` and `replace_header` (in listed order), body, status. A rule is
-atomic: if one action fails, none of the rule's actions applies.
+Within a rule, the actions run in a fixed order, whatever the order in the list:
+
+1. method and URL;
+2. `delete_header`;
+3. `set_header` and `replace_header`, in the listed order;
+4. body;
+5. status.
+
+A rule is atomic. When one action fails, no action of the rule applies.
 
 A rule can never change the scheme, the host or the port. These header targets are refused: `Host`,
 `Content-Length`, `Transfer-Encoding`, `Connection`, `Keep-Alive`, `TE`, `Trailer`, `Expect`,
 `Upgrade` and every `Proxy-*` header. A header value cannot contain a line break or a NUL byte.
 
-A rule that reads or rewrites a body is skipped whole, its header, URL and status actions included,
-when that body is binary, larger than 1 MiB, compressed (`Content-Encoding` other than `identity`),
-streamed, or absent by protocol (response to `HEAD`, status 1xx, 204 or 304).
+A rule that reads or rewrites a body is skipped as a whole, with its header, URL and status
+actions. This happens when that body is:
+
+- binary;
+- larger than 1 MiB;
+- compressed (`Content-Encoding` other than `identity`);
+- streamed;
+- absent by protocol (the response to `HEAD`, or the status 1xx, 204 or 304).
 
 ### Sensitive actions
 
 An action marked `"sensitive": true` keeps its `value` out of every API response. A read returns
 the action without `value` and with `"value_set": true`.
 
-On update, a sensitive action sent without `value` keeps the stored value, provided the stored
-rule has exactly one sensitive action with the same type, header name (case-insensitive) and
-`regex`, whatever its position: actions can be reordered without sending their values. When the
-stored rule has no such action, or several (same type, same name, same `regex`), the update is
-refused with HTTP 400 and the value must be sent again. An explicit `"value": ""` is a value.
+On update, a sensitive action that is sent without `value` keeps the stored value. One condition
+must hold: the stored rule has exactly one sensitive action with the same type, the same header
+name (case-insensitive) and the same `regex`. The position does not matter. You can therefore
+reorder the actions without sending their values. When the stored rule has no such action, or
+several (same type, same name, same `regex`), the update is refused with HTTP 400. You must then
+send the value again. An explicit `"value": ""` is a value.
 
 A stored sensitive value is not written to a new destination. When an update keeps at least one
-stored value, the `host` matcher must stay the same (compared case-insensitively); otherwise the
-update is refused with HTTP 400 and the value must be sent again or cleared. The `url_regex`
-matcher is not part of this comparison, an accepted limit: a kept value follows a rule whose
-`url_regex` changes on the same host.
+stored value, the `host` matcher must stay the same (the comparison ignores case). Otherwise the
+update is refused with HTTP 400. You must then send the value again or clear it. The `url_regex`
+matcher is not part of this comparison. This is an accepted limit: a kept value then follows a
+rule whose `url_regex` changes on the same host.
 
 The flag covers the action's value only. Matchers are not masked. A value an action places in the
 URL, marked sensitive or not, is sent to the target as part of the URL.
@@ -131,10 +149,13 @@ A rule the validation refuses, or a limit reached, answers 400; an unknown id an
 }
 ```
 
-A rule in a response also carries `load_error` when it is enabled but left out of the running
-snapshot (for example a rule saved by an older version that the current validation refuses), and
-`last_error` (`class`, `at`, `count`) for its most recent run-time error. `last_error` is kept in
-memory and lost at restart.
+A rule in a response can carry two more fields:
+
+- `load_error`, when the rule is enabled but not in the running snapshot (for example a rule that
+  an older version saved and that the current validation refuses);
+- `last_error` (`class`, `at`, `count`) for the most recent error at run time.
+
+`last_error` is kept in memory and is lost at restart.
 
 Rules are never exposed as an agent tool.
 
@@ -143,11 +164,11 @@ Rules are never exposed as an agent tool.
 Rules live in the PostgreSQL table `traffic_rewrite_rules` (migration
 `0005_traffic_rewrite_rules.sql`). They are global configuration and are not part of a task
 archive. The `matchers` and `actions` columns are encrypted at rest with the instance secret key,
-like the other stored secrets: a database backup without `keys/secret.key` (or `ARTEX_SECRET_KEY`)
-cannot restore them, and ARTEX refuses to start under a key that cannot open them.
+like the other stored secrets. A database backup without `keys/secret.key` (or `ARTEX_SECRET_KEY`)
+cannot restore them. ARTEX Program refuses to start with a key that cannot open them.
 
-The server compiles the enabled rules into an immutable snapshot at startup and after every rule
-change, and hands it to the proxy without a restart.
+The server compiles the enabled rules into an immutable snapshot at startup, and after each rule
+change. It hands the snapshot to the proxy without a restart.
 
 ## Application in the capture proxy
 
@@ -162,12 +183,12 @@ For a rewritten exchange, the record keeps the request as the client sent it and
 the target sent it. The rewritten values are not stored as the exchange's original data.
 
 - Each action that ran (applied, skipped or failed) is written in the SQLite table
-  `exchange_rewrites`, in the same transaction as the exchange itself, with the rule id, a copy of
-  the rule as it was applied, the action, the outcome and the reason.
+  `exchange_rewrites`, in the same transaction as the exchange itself. The row has the rule id, a
+  copy of the rule as it was applied, the action, the outcome and the reason.
 - The before value is kept as its SHA-256. The after value is kept as the value itself, inline or
-  in the blob store when it is large, with its SHA-256. A sensitive action stores neither value nor
-  plain hash: its after value is not stored, and the hashes it leaves are a keyed HMAC when a key is
-  available (empty otherwise). The same HMAC applies to later actions on a field a sensitive action
+  in the blob store when it is large, with its SHA-256. A sensitive action stores no value and no
+  plain hash. Its after value is not stored. Its hashes are a keyed HMAC when a key is available,
+  and empty otherwise. The same HMAC applies to later actions on a field that a sensitive action
   wrote.
 - `traffic_get` shows a `=== REWRITTEN ===` line naming the rule ids when the exchange was changed.
   The line says that the shown values are the originals.
@@ -181,9 +202,9 @@ Reasons a rule is not applied are recorded in the trace, for example `not rewrit
 - **SSE** (`text/event-stream`): status and headers are rewritten at the start of the stream
   (SSEStart), since they are sent once. Later event frames pass unchanged.
 - **WebSocket**: not rewritten. The capture library calls its start hook after the upgrade is
-  already done, and it short-circuits the upgrade before the request and response hooks run, so
-  the handshake status and headers cannot be changed. Frames pass unchanged. The exchange is
-  traced `not rewritten: stream`.
+  complete. It handles the upgrade before the request and response hooks run. The status and the
+  headers of the handshake therefore cannot change. Frames pass unchanged. The exchange is traced
+  `not rewritten: stream`.
 
 ### Large responses
 
@@ -193,7 +214,9 @@ response rule runs on it.
 
 ### Snapshot limits
 
-Each exchange with a rewrite trace (at least one rule matched and produced a line: applied, skipped or failed) keeps an original copy in memory until it finishes. Limits:
+Each exchange with a rewrite trace keeps an original copy in memory until it finishes. A rewrite
+trace means that at least one rule matched and produced a line (applied, skipped or failed). The
+limits:
 
 | Limit | Value |
 |---|---|
@@ -202,10 +225,13 @@ Each exchange with a rewrite trace (at least one rule matched and produced a lin
 | Tombstones (slots whose data was released) | 4096 |
 | Time after which the slot of a live flow may be turned into a tombstone (see below) | 15 minutes |
 
-When there is no room, the request is not rewritten. The exchange is traced `not rewritten: snapshot capacity` when a tombstone slot is free; when the tombstone table is full, the request is refused with no trace line at all (the refusal is counted and logged, at most once a minute).
-The slot of a finished flow is swept when its connection closes (at most once per second) and at
-least once a minute while slots exist. The 15-minute TTL never deletes a live flow's slot: past it,
-the slot may be converted into a tombstone if a new reservation needs the room.
+When there is no room, the request is not rewritten. When a tombstone slot is free, the exchange is
+traced `not rewritten: snapshot capacity`. When the tombstone table is full, the request is refused
+with no trace line. The refusal is counted and logged, at most once a minute.
+
+The slot of a finished flow is swept when its connection closes (at most once per second). It is
+also swept at least once a minute while slots exist. The TTL of 15 minutes never deletes the slot of a live flow.
+After the TTL, the slot can become a tombstone when a new reservation needs the room.
 
 ### Replay
 
@@ -214,11 +240,15 @@ captured in Traffic, but **bypasses capture rewrite rules by default** (`apply_r
 run enabled capture rules against a replay and trace them like captured traffic, opt in with
 `"apply_rules": true` (or check **Apply capture rewrite rules** in the Replay panel).
 
-When `apply_rules` is false, `traffic.Replay` registers a single-use random 32-byte hex nonce in an
-in-memory registry, attaches the internal header `X-ARTEX-Replay-Nonce: <nonce>`, and removes the
-nonce when the call returns. The capture proxy strips `X-ARTEX-Replay-Nonce` unconditionally in the
-request hook so the target never sees it; only a value matching a registered nonce bypasses both
-request and response rule phases, while any forged header is stripped and ignored.
+When `apply_rules` is false, `traffic.Replay` takes three steps:
+
+1. It registers a single-use random nonce of 32 bytes in hex, in a registry in memory.
+2. It attaches the internal header `X-ARTEX-Replay-Nonce: <nonce>`.
+3. It removes the nonce when the call returns.
+
+The capture proxy always removes `X-ARTEX-Replay-Nonce` in the request hook, so the target never
+sees it. Only a value that matches a registered nonce bypasses the rule phases of the request and
+of the response. A forged header is removed and ignored.
 
 ### Stats
 
@@ -252,9 +282,10 @@ Task archives export captured traffic into `traffic/traffic.json` using **format
   and distinct, and `blobs` are sorted so re-exporting the same data produces a byte-identical
   `traffic.json`.
 - `ImportArchive` accepts versions 1 and 2 and refuses any other version. Version 1 entries import
-  as unrewritten with no rule IDs. Version 2 entries marked `rewritten: true` reconstruct minimal
-  applied rows in `exchange_rewrites` (`phase = 'archived'`, `outcome = 'applied'`,
-  `reason = 'archived'`, `rule_snapshot = NULL`) for each distinct rule ID (or a single `NULL`
-  `rule_id` row when `rewrite_rule_ids` is empty), preserving `RewriteInfo`, `traffic_get`'s
-  `=== REWRITTEN ===` header, evidence-binding provenance, and the traffic list filter without
-  fabricating a rule snapshot or request/response phase. Existing hot rows always win on import.
+  as unrewritten with no rule IDs. A version 2 entry with `rewritten: true` gets
+  minimal applied rows in `exchange_rewrites` (`phase = 'archived'`, `outcome = 'applied'`,
+  `reason = 'archived'`, `rule_snapshot = NULL`), one for each distinct rule ID. When
+  `rewrite_rule_ids` is empty, the entry gets a single row with a `NULL` `rule_id`. The rows keep
+  `RewriteInfo`, the `=== REWRITTEN ===` header of `traffic_get`, the provenance of the evidence
+  binding, and the filter of the traffic list. The import does not fabricate a rule snapshot or a
+  request or response phase. Existing hot rows always win on import.

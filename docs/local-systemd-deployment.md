@@ -32,13 +32,15 @@ sudo install -d -o artex -g artex -m 0700 /opt/artex/keys
 Directory ownership and modes:
 
 - `<install-dir>` (`/opt/artex`): `root:<artex-user>`, mode `0755` (executable `/opt/artex/artex` mode `0755`).
-- `<install-dir>/data` (`/opt/artex/data`): `<artex-user>:<artex-user>`, mode `0770` so the service user (and, in a root-run deployment using an executor group, that group) can write task run directories while blocking world access.
-- `<install-dir>/keys` (`/opt/artex/keys`): `<artex-user>:<artex-user>`, mode `0700`. Holds `jwt.key` and `secret.key` (mode `0600`) outside the browsable `data/` directory. `docs/examples/artex.service` sets `Environment=ARTEX_JWT_KEY_DIR=/opt/artex/keys` so the non-root service writes key files here rather than into `root`-owned `/opt/artex` (if `ARTEX_JWT_KEY_DIR` were left unset, ARTEX would fall back to `<install-dir>` and fail to create `jwt.key` and `secret.key` when `<install-dir>` is `root:<artex-user>` `0755`).
+- `<install-dir>/data` (`/opt/artex/data`): `<artex-user>:<artex-user>`, mode `0770`. The service user can then write the task run directories. In a root-run deployment with an executor group, that group can also write. Other users have no access.
+- `<install-dir>/keys` (`/opt/artex/keys`): `<artex-user>:<artex-user>`, mode `0700`. It holds `jwt.key` and `secret.key` (mode `0600`), outside the browsable `data/` directory. `docs/examples/artex.service` sets `Environment=ARTEX_JWT_KEY_DIR=/opt/artex/keys`. The service that does not run as root then writes its key files here, and not in `/opt/artex`, which `root` owns. Without `ARTEX_JWT_KEY_DIR`, ARTEX Program falls back to `<install-dir>`. It then cannot create `jwt.key` and `secret.key` when `<install-dir>` is `root:<artex-user>` with mode `0755`.
 - `<install-dir>/config.json` (`/opt/artex/config.json`): `<artex-user>:<artex-user>`, mode `0600`.
 
 ## Database and credentials
 
-Install PostgreSQL on the host (or use an existing reachable PostgreSQL instance) and create a dedicated non-superuser login role and database named `artex` with no role-creation or database-creation privileges.
+Install PostgreSQL on the host, or use an existing PostgreSQL instance that the host can reach.
+Create a dedicated login role and a database, both named `artex`. The role is not a superuser. It
+has no privilege to create roles or databases.
 
 On Debian/Ubuntu, confirm the cluster name (`<pg-version>/<pg-cluster>`) with `pg_lsclusters`, start `<pg-unit>`, and create the role and database if absent:
 
@@ -48,7 +50,15 @@ sudo -u postgres createuser --pwprompt artex
 sudo -u postgres createdb --owner=artex artex
 ```
 
-Enter a unique password at the prompt. In `<install-dir>/config.json`, set `database.host` to `127.0.0.1`, `port` to `5432`, `user` and `dbname` to `artex`, `password` to that secret, and `sslmode` to `disable` (disabling TLS is appropriate only for loopback traffic). Preserve other settings and restrict access:
+Enter a unique password at the prompt. In `<install-dir>/config.json`, set these values:
+
+- `database.host` to `127.0.0.1`;
+- `port` to `5432`;
+- `user` and `dbname` to `artex`;
+- `password` to that secret;
+- `sslmode` to `disable`. Disable TLS only for loopback traffic.
+
+Preserve the other settings. Restrict the access:
 
 ```bash
 sudo chown artex:artex /opt/artex/config.json
@@ -83,7 +93,7 @@ sudo systemctl daemon-reload
 
 ### Database dependency and environment overrides
 
-`docs/examples/artex.service` intentionally declares only `After=network.target` and does not hardcode a distribution-specific PostgreSQL unit (such as Debian's `postgresql@<pg-version>-<pg-cluster>.service`), so it works across Linux distributions and with remote PostgreSQL servers.
+`docs/examples/artex.service` declares only `After=network.target`. It does not name a PostgreSQL unit of a specific distribution (such as Debian's `postgresql@<pg-version>-<pg-cluster>.service`). It therefore works on each Linux distribution and with remote PostgreSQL servers.
 
 When PostgreSQL runs locally on the same host, add a systemd drop-in (`sudo systemctl edit artex.service`) so ARTEX starts after and depends on your local PostgreSQL unit:
 
@@ -106,30 +116,62 @@ systemctl status artex.service --no-pager
 curl --fail --silent --show-error http://127.0.0.1:8787/api/health
 ```
 
-The unit runs `/opt/artex/artex` directly without an extra supervisor script. It starts after `network.target`, restarts on failure after five seconds, allows 30 seconds for graceful shutdown, logs to the journal, and uses `UMask=0002` (rather than `0077`, which would block group writes in a root-run deployment where executor privilege drop sets umask `002` for the executor group; sensitive files such as `config.json`, `keys/jwt.key`, and `keys/secret.key` are protected explicitly with `0600`/`0700` permissions). Five starts within 60 seconds trigger the start limit.
+The unit runs `/opt/artex/artex` directly, without a supervisor script. Its behavior:
+
+- It starts after `network.target`.
+- It restarts after a failure, with a delay of five seconds.
+- It allows 30 seconds for a graceful shutdown.
+- It logs to the journal.
+- It uses `UMask=0002`, not `0077`. In a root-run deployment, the privilege drop sets umask `002` for the executor group. `0077` would block the writes of that group. The sensitive files (`config.json`, `keys/jwt.key` and `keys/secret.key`) are protected explicitly with modes `0600` and `0700`.
+- Five starts within 60 seconds trigger the start limit.
 
 ### Agent isolation
 
-Because `docs/examples/artex.service` runs the server as the non-root `<artex-user>` (`User=artex`), the `-exec-uid`/`-exec-gid` privilege drop cannot be applied: `ResolveExecPrivilege` disables the drop when the server is not root (and errors if those flags are passed explicitly). The example unit deliberately omits `-exec-uid`/`-exec-gid`, so agents and spawned tools run under the `<artex-user>` service identity rather than a separate executor account. The root-owned run-directory layout and executor-group containment exist only when the server runs as root with explicit `-exec-uid`/`-exec-gid`; if you require unprivileged-executor containment, use the Docker deployment, which is the supported path for that isolation model.
+`docs/examples/artex.service` runs the server as the user `<artex-user>` (`User=artex`), not as
+root. The privilege drop of `-exec-uid` and `-exec-gid` cannot apply in that mode.
+`ResolveExecPrivilege` disables the drop when the server is not root. It gives an error when you pass
+these flags explicitly. The unit deliberately omits the flags. The agents and the tools that they
+start therefore run as `<artex-user>`, not as a separate executor account.
 
-At every start the server runs an agent isolation self-test before it opens its stores. Under this unit the self-test reports that the privilege drop is off, and the server starts in **degraded** isolation mode; no flag is needed and the unit needs no change. A degraded start:
+The root-owned layout of the run directories and the containment through the executor group exist
+only when the server runs as root with explicit `-exec-uid` and `-exec-gid`. When you need that
+containment, use the Docker deployment. It is the supported path for that isolation model.
+
+At each start, the server runs a self-test of the agent isolation before it opens its stores.
+Under this unit, the self-test reports that the privilege drop is off. The server then starts in
+**degraded** isolation mode. No flag is necessary, and the unit needs no change. A degraded start:
 
 - logs a banner that begins with `[isolation] !!!` and contains `AGENT ISOLATION IS DEGRADED` together with the self-test failure (see `journalctl -u artex.service`);
 - shows a red banner on every page of the web UI (from the `isolation` field of `GET /api/health`, returned to signed-in users only).
 
-In degraded mode agent shells, custom tools, MCP stdio servers and the file tools run as `<artex-user>`, which owns `config.json`, `keys/` and `data/`: they can read the JWT signing key, the secret key and the database password. Do not use this deployment on a server that holds real targets or credentials.
+In degraded mode, the agent shells, the custom tools, the MCP stdio servers and the file tools
+run as `<artex-user>`. That user owns `config.json`, `keys/` and `data/`. The agents can therefore
+read the JWT signing key, the secret key and the database password. Do not use this deployment on a
+server that holds real targets or credentials.
 
-A Linux server that runs as root with the privilege drop on (the Docker image) is held to the self-test instead: when isolation is broken there, the server refuses to start. `-dev-insecure-no-isolation` lets it start degraded anyway, for development only. The same rule leaves Windows, macOS and `dev.sh` (run as your own user) in degraded mode, with the same banners.
+A Linux server that runs as root with the privilege drop on (the Docker image) must pass the
+self-test. When the isolation is broken there, the server refuses to start. The flag
+`-dev-insecure-no-isolation` starts it degraded anyway. Use it for development only. Windows, macOS
+and `dev.sh` (run as your own user) stay in degraded mode under the same rule, with the same
+banners.
 
 ## Web setup
 
-On a new database, visit `http://127.0.0.1:8787/setup`, provide the one-time setup token from the private startup log or journal (`journalctl -u artex.service`), and choose a unique password of at least 12 characters. The username is `ARTEX`. Store the password in your password manager rather than in a plaintext file on disk.
+On a new database, visit `http://127.0.0.1:8787/setup`. Provide the one-time setup token from the
+private startup log or journal (`journalctl -u artex.service`). Choose a unique password of at least
+12 characters. The username is `ARTEX`. Store the password in your password manager, not in a
+plaintext file on disk.
 
 ## Reboot persistence verification (example)
 
-Pre-reboot checks confirm persistent ARTEX enablement, active PostgreSQL and ARTEX services, HTTP 200 health, and initialized authentication, but do not by themselves prove survival across a reboot.
+The checks before the reboot confirm that ARTEX Program stays enabled, that the PostgreSQL and
+ARTEX services are active, that the health endpoint answers HTTP 200, and that the authentication is
+initialized. They do not prove that the service survives a reboot.
 
-To verify reboot persistence on a host, record the current boot ID and timestamp in an ignored runtime file such as `<install-dir>/data/reboot-verification-baseline.json` before rebooting, and do not overwrite that baseline until the test is complete:
+To verify the persistence across a reboot, record the current boot ID and timestamp before the
+reboot. Use a runtime file that is ignored, such as
+`<install-dir>/data/reboot-verification-baseline.json`. Do not overwrite that baseline until the test
+is complete:
 
 ```bash
 sudo -u artex python3 -c 'import json, time; from pathlib import Path; Path("/opt/artex/data/reboot-verification-baseline.json").write_text(json.dumps({"boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(), "ts": time.time()}))'

@@ -1,12 +1,11 @@
 # RSI lessons (shadow mode)
 
-Deterministic, evidence-gated lessons extracted from closed tasks. This is the
-memory layer of the RSI work: it records what earlier tasks proved, not what a
-model guessed, and it never changes a prompt by itself.
+ARTEX Program extracts deterministic, evidence-gated lessons from closed tasks. This is the
+memory layer of the RSI work (see `RSI.md`). A lesson records what earlier tasks proved, not what a
+model guessed. A lesson never changes a prompt by itself.
 
 The admission rule follows the harness2 Library (Google Research, Apache-2.0,
-arXiv 2610.14224): a lesson exists only when it carries a cue, an action, and
-at least one evidence row. The wider taxonomy of gains (task, retained,
+arXiv 2610.14224). A lesson exists only with a cue, an action, and at least one evidence row. The wider taxonomy of gains (task, retained,
 improver) comes from the awesome-rsi list (lobehub).
 
 ## Modes
@@ -34,10 +33,9 @@ POST /api/tasks/{id}/lessons/extract
 
 It is idempotent for the same disposition. `rsi_lesson_evidence` is keyed by
 `(lesson, source_kind, source_id)`, so a second run for the same finding adds
-no evidence and cannot inflate support. A later extract after a reversed
-disposition withdraws that finding's evidence from the opposite-kind lesson,
-including every retest of the finding, and retires the lesson when its live
-support hits zero. The evidence row stays, with `withdrawn_at` set. Confirming
+no evidence and cannot inflate support. A later extract runs after a reversed disposition. It withdraws the evidence of
+that finding from the lesson of the opposite kind, with every retest of the finding. It retires the
+lesson when its live support reaches zero. The evidence row stays, with `withdrawn_at` set. Confirming
 again clears that timestamp and restores the evidence; a retired lesson is
 un-retired only when it has no remaining live evidence. A negative disposition
 also withdraws the cautions written from the finding's retests. A change inside
@@ -82,9 +80,9 @@ company attribution is a later change.
 rendered block. Selection is scoped:
 
 - a lesson with no company is visible only to a task that also has no company;
-- company scope comes from `task_scope`, not `tasks.company_id`; a lesson is
-  company-scoped only when the source task had exactly one company, and a
-  task with several companies is not given a new lesson;
+- the company scope comes from `task_scope`, not from `tasks.company_id`. A lesson is
+  company-scoped only when the source task had exactly one company. A task with several companies
+  gets no new lesson;
 - lessons from the same company or the same task category rank first
   (company/category matches sort ahead of generic rows);
 - within a scope: positive before negative before caution, then support, then
@@ -92,9 +90,9 @@ rendered block. Selection is scoped:
 - at most eight lessons are rendered, and the block stops at 1800 characters
   (runes, not bytes).
 
-Duplicates are merged at extraction time by a dedupe key over kind, scope, cue,
-and action, so the same lesson from several tasks becomes one row with several
-evidence entries and a higher support count.
+Duplicates are merged at extraction time. The dedupe key covers the kind, the scope, the cue and
+the action. The same lesson from several tasks then becomes one row, with several evidence entries
+and a higher support count.
 
 ## Rendering and safety
 

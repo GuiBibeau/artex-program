@@ -2,98 +2,301 @@
 
 ## Supported Versions
 
-ARTEX Program is an autonomous Solana program security testing tool. Security fixes are provided only for the latest official release line. The `main` branch is not considered a stable release and may change at any time.
+ARTEX Program is an autonomous security testing tool for Solana programs. Security fixes go to the
+`main` branch and to the latest release line. The `main` branch is not a stable release. It can
+change at any time.
 
-Only the latest release line receives security fixes. Older releases do not receive fixes; please upgrade to the latest release.
+No release is published yet. Until the first release, `main` is the only supported version.
 
 Notes:
-- Please upgrade to the latest release before reporting a vulnerability.
-- Forks, custom builds from arbitrary commits, and modified versions are not covered by official support.
+
+- Update to the latest commit or release before you report a vulnerability.
+- Forks, custom builds from arbitrary commits, and modified versions are not covered by support.
 
 ## Reporting a Vulnerability
 
 **Do not open a public issue for a security vulnerability.**
 
-Sign in to GitHub and use the [private vulnerability report form](https://github.com/BaaRai/ARTEX/security/advisories/new). You can also reach it from the repository's **Security and quality** tab under **Advisories** → **Report a vulnerability**. This is the only reporting channel.
+Sign in to GitHub and use the
+[private vulnerability report form](https://github.com/GuiBibeau/artex-program/security/advisories/new).
+You can also reach it from the **Security and quality** tab of the repository: **Advisories** →
+**Report a vulnerability**. This is the only reporting channel.
 
-Please include:
-- A description of the vulnerability and its expected impact.
-- The ARTEX version and/or commit hash.
-- Runtime environment (OS, Docker/local, PostgreSQL, LLM provider, etc.).
-- Minimal reproduction steps (PoC).
-- Logs, screenshots, or sample traffic with **sensitive data removed**.
-- Suggested remediation, if available.
+Include:
 
-**Do not send** real third-party data, credentials, tokens, customer data, or unredacted sensitive content.
+- a description of the vulnerability and its expected impact;
+- the ARTEX Program version or commit hash;
+- the runtime environment (OS, Docker or local, PostgreSQL, LLM provider);
+- the minimal steps to reproduce it (a PoC);
+- logs, screenshots, or sample traffic, **with sensitive data removed**;
+- a suggested remediation, if you have one.
+
+**Do not send** real third-party data, credentials, tokens, customer data, or content with secrets.
 
 ## Scope and Authorized Testing
 
-ARTEX is an offensive-security tool. Test only against:
-- Your own ARTEX deployment in a lab or local environment;
-- Systems you own;
-- Targets explicitly authorized in writing (bug bounty, pentest contract, etc.).
+ARTEX Program is a security testing tool. Test only against:
 
-Testing, scanning, or exploiting third-party systems without explicit authorization is strictly prohibited. Reports that violate this principle may be closed without action.
+- your own ARTEX Program deployment in a lab or a local environment;
+- systems that you own;
+- targets that are explicitly authorized in writing (a bug bounty program, a test contract).
+
+It is prohibited to test, scan, or exploit third-party systems without explicit authorization. A
+report that violates this principle can be closed without action.
+
+## Solana Engagement Controls
+
+These properties hold for every task:
+
+- **Approval rules.** The built-in rules ask the operator before a command that moves funds, changes
+  staking, voting, program or token state, deploys or upgrades with `anchor`, or submits a
+  transaction from a command line. An agent tool cannot read or change intercept rules.
+- **Limit of the command rules.** A rule matches the text of a command. A transaction that a script
+  sends is not visible to a command rule. The operation constraints of the task and the fallback
+  judge cover that case.
+- **Wallet keys.** A worker creates test wallets in its run directory. It stores a keypair only as a
+  task credential, which is sealed at rest. The prompts forbid a key in a fact, a finding, or the
+  context of the model.
+- **Untrusted on-chain data.** Account data, program logs and RPC responses come from the chain.
+  The prompts instruct the agents to treat them as data.
+- **Proxy bypass.** A worker shell sets `NO_PROXY` for loopback (`127.0.0.1`, `localhost`, `::1`)
+  and for the package registries and source hosts (crates.io, GitHub, npm, PyPI, the Go module
+  proxy). Traffic to these hosts does not go through the recording proxy and is not recorded. A
+  local validator and a local test server must be reached directly. Cargo and other rustls clients
+  do not trust the CA of the proxy.
 
 ## Trusted Inputs and Scope Enforcement
 
-ARTEX trusts the scanner output file (`output.json`) that `ingest_bbot` reads. The `scope_distance` field carried on scope-relevant events is the scanner's own verdict and is ingested as-is: an event the scanner marks in scope (per its own `-s`/`--no-scope` configuration) is treated as in scope without being re-checked against ARTEX's rule set.
+ARTEX Program trusts the scanner output file (`output.json`) that `ingest_bbot` reads. This tool is
+not bound to any agent by default in ARTEX Program. An operator can bind it.
 
-The enforced trust boundary for asset insertion is `insert_assets`, which runs every candidate through `EvaluateAssetGate`: block rules always apply, and a task allow-list is enforced when one is configured. A rejected candidate is returned as an `insertion forbidden` error for that asset and is never inserted, so it cannot reach task execution. `in_scope_not_asset` in the `ingest_bbot` result is a different count: in-scope events that are not asset types (findings and the like).
+- The `scope_distance` field on an event is the verdict of the scanner. ARTEX Program ingests it as
+  it is. An event that the scanner marks as in scope (through its `-s` or `--no-scope` setting) is in
+  scope. ARTEX Program does not check it again against its own rules.
+- The enforced trust boundary for asset insertion is `insert_assets`. It runs each candidate through
+  `EvaluateAssetGate`. Block rules always apply. A task allow-list applies when one is configured.
+- A rejected candidate returns an `insertion forbidden` error for that asset. It is never inserted,
+  so it cannot reach task execution.
+- `in_scope_not_asset` in the `ingest_bbot` result is a different count: in-scope events that are
+  not asset types, such as findings.
 
-Accepted gap: when a task has no allow-list, there is no allow rule to apply (block rules still run), and any host carried on an in-scope event that is not blocked enters the graph as an asset. Operators who rely on the scanner's scope rules alone should configure an allow-list per task, or review `output.json` before feeding it to ARTEX. Cross-checking ingested events against ARTEX's own rule set would change what existing scanner configurations mean for those operators, so it is treated as a deliberate design question (see #317), not an accepted vulnerability.
+Accepted gap: when a task has no allow-list, there is no allow rule to apply. Block rules still
+run. A host on an in-scope event that is not blocked then enters the graph as an asset. An operator
+who relies on the scope rules of the scanner alone takes one of two steps: configure an allow-list
+per task, or review `output.json` before the file goes to ARTEX Program. A check of each ingested event against
+the rules of ARTEX Program would change what an existing scanner configuration means for these
+operators. It is therefore a design question (see upstream issue #317), not an accepted
+vulnerability.
 
 ## Outbound Model Listing (`POST /api/llm/models`)
 
-`POST /api/llm/models` fetches model lists from the provider endpoint and optional HTTP proxy supplied in the request. By default, ARTEX allows only `http` and `https` URLs whose hosts resolve exclusively to public IP addresses (blocking loopback, RFC1918 private networks, IPv6 unique-local `fc00::/7`, link-local/cloud metadata such as `169.254.169.254`, unspecified, and multicast addresses, carrier-grade NAT `100.64.0.0/10`, the benchmarking range `198.18.0.0/15`, `192.0.0.0/24` and the reserved block `240.0.0.0/4`; a NAT64 `64:ff9b::/96` or 6to4 `2002::/16` address is judged by the IPv4 address it embeds), and enforces the same checks on redirects and at dial time. A non-200 answer from the endpoint is reported by its status only; its body is not returned. The built-in local Ollama default (`http://127.0.0.1:11434/v1`) is permitted only when the request leaves `base_url` empty for the `ollama` provider.
+`POST /api/llm/models` fetches model lists from the provider endpoint and from the optional HTTP
+proxy that the request supplies. By default, ARTEX Program allows only `http` and `https` URLs
+whose hosts resolve to public IP addresses only. It blocks:
 
-Operators running self-hosted LLM gateways or Ollama on a LAN or Docker bridge can allow specific endpoints with `ARTEX_LLM_PRIVATE_ENDPOINTS`, a comma-separated list of exact `host:port` entries (for example, `127.0.0.1:11434,host.docker.internal:11434,192.168.1.10:11434`). A URL whose `host:port` matches an entry may resolve to a loopback or private address, or to an address in `100.64.0.0/10` or `198.18.0.0/15` (an overlay network, a fake-IP resolver), while scheme restrictions, link-local/cloud-metadata blocks, the other reserved ranges above, and redirect validation still apply; everything else stays refused. Leaving `ARTEX_LLM_PRIVATE_ENDPOINTS` unset or empty keeps the strict public-only policy.
+- loopback;
+- the RFC1918 private networks;
+- the IPv6 unique-local range `fc00::/7`;
+- link-local addresses and cloud metadata addresses, such as `169.254.169.254`;
+- the unspecified address and multicast addresses;
+- carrier-grade NAT `100.64.0.0/10`;
+- the benchmarking range `198.18.0.0/15`;
+- `192.0.0.0/24`;
+- the reserved block `240.0.0.0/4`.
+
+A NAT64 address (`64:ff9b::/96`) or a 6to4 address (`2002::/16`) is judged by the IPv4 address that
+it embeds. The same checks apply to redirects and at dial time. A non-200 answer from the endpoint
+is reported by its status only. Its body is not returned. The built-in local Ollama default
+(`http://127.0.0.1:11434/v1`) is permitted only when the request leaves `base_url` empty for the
+`ollama` provider.
+
+An operator who runs a self-hosted LLM gateway or Ollama on a LAN or a Docker bridge can allow
+specific endpoints with `ARTEX_LLM_PRIVATE_ENDPOINTS`. It is a comma-separated list of exact
+`host:port` entries, for example `127.0.0.1:11434,host.docker.internal:11434,192.168.1.10:11434`.
+A URL whose `host:port` matches an entry can resolve to a loopback or private address, or to an
+address in `100.64.0.0/10` or `198.18.0.0/15` (an overlay network, a fake-IP resolver). The scheme
+restrictions, the link-local and metadata blocks, the other reserved ranges, and the redirect
+validation still apply. Everything else stays refused. When `ARTEX_LLM_PRIVATE_ENDPOINTS` is unset
+or empty, the strict public-only policy applies.
 
 ## Agent Process Isolation
 
-The server runs as root, but the processes an agent starts (Bash, the interactive shell, custom tools and stdio MCP servers) run as the unprivileged uid and gid set by `-exec-uid` and `-exec-gid` (default 10001). Only the run directories and their own home (`<data>/exec-home`) are writable by them. No agent working directory is an ancestor of another: the main agent and the planner work in `tasks/<id>/main`, a worker in `tasks/<id>/i<N>`, a chat in `sessions/<id>`. Their parents (`tasks/`, `sessions/` and `tasks/<id>`) are root:root 0755, so the executor cannot create, rename or remove an entry there, and only the leaves are shared with the executor group (setgid, 0775); with the drop active the server creates each level without following a symlink. Entries that a task already had directly under `tasks/<id>/` before this layout (uploads, files the main agent wrote there) are not moved and are shared with the executor group again, at start-up and on archive restore, so for tasks in progress too, while `tasks/<id>` itself stays root:root 0755: the main agent's new run directory `main/` is empty on its first turn, and the earlier artifacts stay under `tasks/<id>/` and are reached through Bash only. `keys/` (`jwt.key`, `secret.key`), the config file and the MITM CA key are root-only, and the server's environment block no longer carries `ARTEX_PG_DSN`, `ARTEX_SECRET_KEY`, the LLM API keys or the LLM proxy and base URLs (Linux). The agent's file tools (Read, Write, Edit, MultiEdit, LS, Glob, Grep) run inside the server but reach only the run's working directory: paths are opened through `os.Root`, so absolute paths elsewhere, `..` and symlinks leading out are refused, and a working directory reached through any symlink is refused. The executor cannot replace a run directory or one of its parents, so the race that remains is the swap between an `EvalSymlinks` check and the open of a file inside a run directory, which the executor can do only inside a leaf (every executor process has the same identity, so this is any leaf, never a leaf itself or its parents). `ingest_bbot` reads its file through the same confinement. Custom-tool scripts are protected only when the executor privilege drop is active: they are then written to `<data>/exec-scripts`, a root-owned directory the executor can read and cannot change; with the drop disabled they still go to `.tools/` under the run directory. Command-output spills (the full output of a tool call over the size cap, written by Norma inside the server) follow the same rule: with the drop active they go to a root-owned directory per task or chat session outside the run directory, `<data>/spill/tasks/<id>` or `<data>/spill/sessions/<id>` (root with the executor group, 0750, below root:root 0755 parents), which is deleted and archived with the task, or deleted with the conversation. The executor cannot create, rename or remove an entry there. Norma writes a spill file 0600 and the server makes it root with the executor group, 0640, when the tool call returns: the agent reads it with Bash, not with the file tools, which do not reach outside the run directory. With the drop disabled spills still go to `cmd-output/` under the run directory. Residual, not closed here: the other root reads and writes by path remain open, and a symlink the executor places can redirect them, so root may read or write outside the workspace. They are `ingest_scan_output` (a root read by path), chat uploads under the `tasks/<id>/main/uploads/` or `sessions/<id>/uploads/` directories, task archive packaging (`lstat` then open by path), and the background-task output that Norma writes inside the server under `os.TempDir()/norma` (`<tmp>/norma/<session>/tasks/`), a path ARTEX does not choose: with the drop active the server creates that directory root:root 0755 at start-up, before any agent process runs, and refuses to start when it is a symlink or not a directory, or when a pre-existing `<tmp>/norma` is one the executor can write (this can refuse a start that worked before; the operator remedy is to remove that directory or set `TMPDIR` to a directory the executor cannot write; ARTEX never modifies or deletes the directory), but a directory already there under another owner is used as found, with a warning in the log. `TMPDIR` must be a root-controlled path: the start-up check follows `TMPDIR` and inspects `<tmp>/norma` and its immediate parent only, so a symlink or an ancestor below a directory the executor can write is not detected, and POSIX ACLs are not inspected. The `ask_operator` image staging is narrower than those. It creates `tasks/<id>/uploads` with `Mkdir` and checks it with `Lstat` (a symlink or anything that is not a directory is refused), gives the copy a random name `ask-operator-<unixnano>-<8 hex>.<ext>` created with `O_EXCL` and mode 0640, so it never overwrites a file, and opens the source only when the `Lstat` of the path and the `Stat` of the opened file agree (`os.SameFile`). What remains there: a directory component inside the run directory can be swapped for a symlink between the check and the open, so root can still read a file outside the run directory and stage a copy of it; an `uploads/` directory that existed before start-up or an archive restore is shared with the executor group and stays group-writable, so a staged copy can be replaced after it is written and the operator may see another image; with `fs.protected_hardlinks=0` a hard link to a file the executor cannot read is copied; and a FIFO swapped in after the `Lstat` blocks the call. The Docker image has no setuid programs and `docker-compose.yml` sets `no-new-privileges`. These are a containment layer, not a sandbox: an executor can still read world-readable files under the data directory, reach the loopback API and the database if the network allows it, and use any credential it was given through the platform. Persistence tools (custom tools, MCP servers, skills) need operator approval by default.
+This section describes the Docker deployment: a Linux server that runs as root with the privilege
+drop active. On macOS, or when the server does not run as root, the drop is
+off. The server logs a banner that says so. The properties below do not hold in that mode.
+
+### The privilege drop
+
+- The server runs as root.
+- The processes that an agent starts run as an unprivileged user: Bash, the interactive shell,
+  custom tools, and stdio MCP servers. The user and group come from `-exec-uid` and `-exec-gid`
+  (default 10001). This user is the **executor**.
+- The executor can write only the run directories and its own home (`<data>/exec-home`).
+
+### Directory layout and permissions
+
+- No agent run directory is an ancestor of another. The main agent and the planner work in
+  `tasks/<id>/main`. A worker works in `tasks/<id>/i<N>`. A chat works in `sessions/<id>`.
+- The parents (`tasks/`, `sessions/` and `tasks/<id>`) are `root:root` with mode 0755. The executor
+  cannot create, rename or remove an entry there.
+- Only the leaves are shared with the executor group (setgid, mode 0775).
+- With the drop active, the server creates each level without following a symlink.
+- A task can have entries directly under `tasks/<id>/` from the time before this layout: uploads,
+  and files that the main agent wrote there. These entries are not moved. They are shared with the
+  executor group again at start-up and on archive restore. `tasks/<id>` itself stays `root:root`
+  0755. The new run directory `main/` of the main agent is empty on its first turn. The earlier
+  artifacts stay under `tasks/<id>/` and are reachable through Bash only.
+
+### Keys and environment
+
+- `keys/` (`jwt.key`, `secret.key`), the config file and the MITM CA key are readable by root only.
+- On Linux, the environment block of an agent process does not contain `ARTEX_PG_DSN`,
+  `ARTEX_SECRET_KEY`, the LLM API keys, or the LLM proxy and base URLs.
+
+### File tools
+
+The file tools of an agent (Read, Write, Edit, MultiEdit, LS, Glob, Grep) run inside the server.
+They reach only the run directory of the run:
+
+- Paths are opened through `os.Root`. An absolute path elsewhere, `..`, and a symlink that leads out
+  are refused.
+- A run directory that is reached through a symlink is refused.
+- The executor cannot replace a run directory or one of its parents.
+
+One race remains: the executor can swap a path between the `EvalSymlinks` check and the open of a
+file inside a run directory. The executor can do this only inside a leaf. Every executor process
+has the same identity, so this is any leaf, never a leaf itself or its parents.
+
+`ingest_bbot` reads its file through the same confinement.
+
+### Custom-tool scripts
+
+- With the drop active, a custom-tool script is written to `<data>/exec-scripts`. The directory is
+  owned by root. The executor can read it and cannot change it.
+- With the drop disabled, the script goes to `.tools/` under the run directory.
+
+### Command-output spills
+
+A spill is the full output of a tool call that is over the size cap. Norma writes it inside the
+server.
+
+- With the drop active, a spill goes to a root-owned directory per task or chat session, outside
+  the run directory: `<data>/spill/tasks/<id>` or `<data>/spill/sessions/<id>`. The directory is
+  root with the executor group, mode 0750, below parents that are `root:root` 0755. It is deleted
+  and archived with the task, or deleted with the conversation. The executor cannot create, rename
+  or remove an entry there.
+- Norma writes a spill file with mode 0600. When the tool call returns, the server makes the file
+  root with the executor group, mode 0640. The agent reads it with Bash. The file tools do not
+  reach outside the run directory.
+- With the drop disabled, a spill goes to `cmd-output/` under the run directory.
+
+### Root reads and writes by path that stay open
+
+These reads and writes remain open by path. A symlink that the executor places can redirect them,
+so root can read or write outside the workspace:
+
+- `ingest_scan_output` (a root read by path);
+- chat uploads under `tasks/<id>/main/uploads/` or `sessions/<id>/uploads/`;
+- the packaging of a task archive (`lstat`, then an open by path);
+- the output of background tasks that Norma writes inside the server under
+  `os.TempDir()/norma` (`<tmp>/norma/<session>/tasks/`), a path that ARTEX Program does not choose.
+
+Rules for `<tmp>/norma` with the drop active:
+
+- The server creates the directory `root:root` 0755 at start-up, before any agent process runs.
+- The server refuses to start when the directory is a symlink or not a directory. It also refuses
+  to start when a pre-existing `<tmp>/norma` is writable by the executor. Such a start can refuse
+  a configuration that worked before. The remedy is to remove that directory, or to set `TMPDIR`
+  to a directory that the executor cannot write. ARTEX Program never changes or deletes the
+  directory.
+- A directory that is already there under another owner is used as found, with a warning in the
+  log.
+- `TMPDIR` must be a path that root controls. The start-up check follows `TMPDIR` and inspects
+  `<tmp>/norma` and its immediate parent only. A symlink, or an ancestor below a directory that
+  the executor can write, is not detected. POSIX ACLs are not inspected.
+
+### `ask_operator` image staging
+
+The staging of an image for `ask_operator` is narrower than the paths above.
+
+- It creates `tasks/<id>/uploads` with `Mkdir` and checks it with `Lstat`. A symlink, or anything
+  that is not a directory, is refused.
+- The copy gets a random name, `ask-operator-<unixnano>-<8 hex>.<ext>`. It is created with
+  `O_EXCL` and mode 0640, so it never overwrites a file.
+- The source is opened only when the `Lstat` of the path and the `Stat` of the opened file agree
+  (`os.SameFile`).
+
+What remains open:
+
+- A directory component inside the run directory can be swapped for a symlink between the check
+  and the open. Root can then read a file outside the run directory and stage a copy of it.
+- An `uploads/` directory that existed before start-up or an archive restore is shared with the
+  executor group and stays group-writable. A staged copy can be replaced after it is written, and
+  the operator can see another image.
+- With `fs.protected_hardlinks=0`, a hard link to a file that the executor cannot read is copied.
+- A FIFO that is swapped in after the `Lstat` blocks the call.
+
+### Container and limits
+
+- The Docker image has no setuid programs. `docker-compose.yml` sets `no-new-privileges`.
+- These properties are a containment layer, not a sandbox. An executor can still read files under
+  the data directory that are readable by everyone. It can reach the loopback API and the database
+  when the network allows it. It can use a credential that it received through the platform.
+- The persistence tools (custom tools, MCP servers, skills) need operator approval by default.
 
 ## What to Expect
 
-This is an open-source project maintained on a best-effort basis. We aim to acknowledge a report within about a week and keep you updated, but we cannot guarantee specific response or fix timeframes.
+This is an open source project that is maintained on a best-effort basis. The target is to
+acknowledge a report within about a week and to keep you updated. A specific response or fix time
+is not guaranteed.
 
 ## If a Report Is Accepted
 
-- We will open a private **GitHub Security Advisory** for coordination.
-- We will identify the release containing the fix when it is published.
-- We may request a **CVE** if the vulnerability qualifies.
-- We will credit you or your organization in the advisory if you wish.
-- Default disclosure timing: **90 days** after a fix is available, or earlier by mutual agreement. If the vulnerability is being exploited in the wild, we may disclose earlier.
+- A private **GitHub Security Advisory** is opened for the coordination.
+- The release that contains the fix is identified when it is published.
+- A **CVE** can be requested when the vulnerability qualifies.
+- You or your organization are credited in the advisory, if you want that.
+- The default disclosure time is **90 days** after a fix is available, or earlier by mutual
+  agreement. When the vulnerability is exploited in the wild, the disclosure can be earlier.
 
 ## If a Report Is Declined
 
-We will explain the reason, for example:
-- It is not a security vulnerability but intended behavior.
-- It is outside ARTEX’s scope (e.g., an issue in an LLM provider, PostgreSQL, Docker, or a browser).
-- There is insufficient information to reproduce it.
-- The report only states that “the tool can be misused” without identifying a specific technical flaw in ARTEX.
+The reason is explained, for example:
 
-Where appropriate, we may convert the report into a public hardening issue or feature request.
+- It is not a security vulnerability. It is intended behavior.
+- It is outside the scope of ARTEX Program: an issue in an LLM provider, PostgreSQL, Docker, or a
+  browser.
+- There is not enough information to reproduce it.
+- The report only states that "the tool can be misused". It does not identify a technical flaw in
+  ARTEX Program.
+
+When it is appropriate, the report becomes a public hardening issue or a feature request.
 
 ## Out of Scope
 
-The following are generally **not** considered ARTEX security vulnerabilities:
-- Attacks or scans against systems you do not own or are not authorized to test.
-- Self-XSS, spam, or brute-force without real impact.
-- Large-scale DoS/DDoS or resource-exhaustion attacks.
-- Social engineering targeting maintainers or users.
-- Issues that exist only in third-party dependencies and do not affect ARTEX.
-- Reports that “ARTEX can be used to attack systems” when the user has valid authorization — this is the nature of a penetration-testing tool, not a vulnerability.
-- Missing headers or hardening configuration without a concrete security impact.
+These are generally **not** security vulnerabilities of ARTEX Program:
+
+- attacks or scans against systems that you do not own or are not authorized to test;
+- self-XSS, spam, or brute force without a real impact;
+- large-scale DoS, DDoS, or resource-exhaustion attacks;
+- social engineering that targets maintainers or users;
+- issues that exist only in third-party dependencies and do not affect ARTEX Program;
+- reports that "ARTEX Program can be used to attack systems" when the user has a valid
+  authorization. This is the nature of a security testing tool, not a vulnerability;
+- a missing header or a hardening configuration without a concrete security impact.
 
 ## Safe Harbor
 
-We welcome ethical security research. If you follow this policy and test only within authorized scope, we will not pursue legal action against you for good-faith research. This does not exempt you from applicable laws in your jurisdiction.
+Ethical security research is welcome. When you follow this policy and test only within an
+authorized scope, no legal action is taken against you for good-faith research. This does not
+exempt you from the laws of your jurisdiction.
 
 ## Disclosure Policy
 
-- Do not publicly disclose vulnerability details before a fix is available or before the coordinated disclosure period ends.
-- Do not publish a public PoC without maintainer consent.
-- If you do not receive a response within a reasonable time, please ping the contact channel above before disclosing.
+- Do not disclose vulnerability details in public before a fix is available, or before the
+  coordinated disclosure period ends.
+- Do not publish a public PoC without the consent of the maintainers.
+- When you receive no response within a reasonable time, contact the channel above before you
+  disclose.
 
-Thank you for helping make ARTEX safer.
+Thank you for helping to make ARTEX Program safer.

@@ -1,6 +1,11 @@
 # Scanner User-Agent
 
-An authorized assessment can opt in to a stable ARTEX User-Agent on supported target HTTP requests. A security operations center (SOC), incident response team (IR), or computer incident response team (CIRT) can search for that label in web application firewall (WAF) logs and correlate candidate events with an approved assessment record.
+An authorized assessment can opt in to a stable ARTEX User-Agent on supported HTTP requests to a
+target. A security team can then search for that label. Examples are a security operations center
+(SOC), an incident response team (IR), or a computer incident response team (CIRT). The team finds
+candidate events in the web application firewall (WAF) logs and correlates them with the record of
+an approved assessment. This feature is for the web assets around a program. It does not apply to
+RPC calls.
 
 ## Configure a task
 
@@ -42,7 +47,21 @@ WebFetch uses the Norma client's own User-Agent. Shell and external tools, brows
 
 Manual replay can resend an operator-selected assessment label from a capture even after the URL is edited. Review the destination and headers before sending and remove the label when it is inappropriate for that destination. Automatic label generation applies only to the task request paths above. [Replay behavior](traffic-rewrite-rules.md#replay)
 
-Phase 1 acceptance uses local HTTP receivers to verify the exact wire value for each covered client, with the noise profile on and off and with direct and recorded routes where supported. Include unconfigured tasks, empty references, explicit User-Agents, listed and unlisted destinations, redirects, and requests without a matching task context. Check that a task ID missing at startup stays disabled for that process, generated labels stay within their configured task and origins, and manual replay sends the selected User-Agent without generating an assessment label.
+Phase 1 acceptance uses local HTTP receivers. It verifies the exact value on the wire for each
+covered client. It runs with the noise profile on and off. It runs with direct and recorded routes
+where they are supported. The test cases include:
+
+- unconfigured tasks and empty references;
+- explicit User-Agents;
+- destinations that are listed and destinations that are not listed;
+- redirects;
+- requests without a matching task context.
+
+The acceptance also checks three properties:
+
+- A task ID that is missing at startup stays disabled for that process.
+- A generated label stays within its task and its origins.
+- A manual replay sends the selected User-Agent and generates no assessment label.
 
 ## WAF triage for SOC, IR, and CIRT
 
@@ -54,7 +73,10 @@ The User-Agent is self-declared metadata. Verify the engagement independently an
 
 ## HackerOne reporting
 
-1. Check the program's security page and the specific asset's scope and testing requirements. If the program specifies an exact User-Agent or another identification header, put that required header in the HTTP custom tool's request headers and check the effective value. Use the stable ARTEX label when the program permits it. [HackerOne security page guide](https://docs.hackerone.com/en/articles/8490833-security-page)
+1. Check the security page of the program, and the scope and the testing requirements of the
+   asset. When the program specifies an exact User-Agent or another identification header, put that
+   header in the request headers of the HTTP custom tool. Then check the effective value. Use the
+   stable ARTEX label when the program permits it. [HackerOne security page guide](https://docs.hackerone.com/en/articles/8490833-security-page)
 2. Submit through the program's report form and select the affected asset. Include the issue and impact, and add the exact identification value, UTC timestamps, safe request IDs, and sanitized request evidence where helpful. Share only the data the program needs to locate and validate the events. [HackerOne report submission guide](https://docs.hackerone.com/en/articles/8473994-submitting-reports)
 3. Use the report thread for correlation questions and follow the program's instructions for any retest. [HackerOne post-submission guide](https://docs.hackerone.com/en/articles/15518592-post-submission-guide)
 
@@ -84,6 +106,9 @@ The approved record for `FS-17` covers `shop.example.test` from `10:00` inclusiv
 
 ## Phase 2 proposal for attributable proxy traffic
 
-Revisit the capture-proxy route separately once it can bind each eligible shell request to a trusted task context and verify the destination against that task's approved scope. Internal attribution metadata should remain inside ARTEX. Apply the stable label once and define its precedence alongside existing proxy rewrite rules.
+The capture-proxy route is a separate topic. Revisit it when two conditions hold: the proxy can
+bind each eligible shell request to a trusted task context, and it can verify the destination
+against the approved scope of that task. Internal attribution metadata stays inside ARTEX Program. Apply the stable label one
+time. Define its precedence together with the existing rewrite rules of the proxy.
 
 Before release, verify the header and scope decisions at local receivers for HTTP and intercepted HTTPS. Test same-scope and cross-scope redirects, concurrent tasks, unmarked traffic, direct shell paths, capture disabled, and replay. Include a built-in request already labelled in Phase 1 and verify that the proxy adds neither a second label nor task metadata on the wire. Document the verified routes and how an operator can inspect the outcome.
