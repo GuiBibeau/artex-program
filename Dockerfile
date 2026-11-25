@@ -102,7 +102,7 @@ RUN set -eux; \
 # is not executed at build time: it does not run under QEMU user emulation (it
 # segfaults) when an arm64 host builds the amd64 image. The pinned image digest
 # is the guarantee for rustc; the runtime stage runs cargo and checks the file.
-FROM rust:1.96.0-slim-bookworm@sha256:4732ca96fd086cb9be682050c3f0176288eebaac2b80aa2bcefccfaf198e1950 AS rust
+FROM rust:1.99.1-slim-bookworm@sha256:f2c004e3d2d8b547e8cf7ffbc29205385f4e71d23e53e4e383065db5e9f822cd AS rust
 
 # ---------------------------------------------------------------- runtime ---
 # Debian trixie (glibc 2.41): the Anchor 1.1.2 release binary requires glibc 2.39,
